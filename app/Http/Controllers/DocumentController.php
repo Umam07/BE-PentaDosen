@@ -73,21 +73,42 @@ class DocumentController extends Controller
         }
 
         $doc = DB::transaction(function () use ($request, $fileUrl, $publishedAt, $isKpi, $accreditationPeriod, $autoVerified, $awardedPoints) {
-            $doc = Document::create([
-                'user_id' => $request->user_id,
-                'title' => $request->title,
-                'category' => $request->category,
-                'file_url' => $fileUrl,
-                'published_at' => $publishedAt->format('Y-m-d'),
-                'is_kpi_counted' => $isKpi,
-                'accreditation_period' => $accreditationPeriod,
-                'status' => $autoVerified ? 'Approved' : 'Pending',
-                'awarded_points' => $awardedPoints,
-            ]);
+            
+            // Check for existing auto-synced document without file
+            $existingDoc = Document::where('user_id', $request->user_id)
+                ->where('title', $request->title)
+                ->where('file_url', '')
+                ->first();
 
-            // If auto-verified, add points to user's total KPI
-            if ($autoVerified && $awardedPoints > 0) {
-                $doc->user->increment('total_kpi_points', $awardedPoints);
+            if ($existingDoc) {
+                // If it already exists (from auto-sync), just update the file_url and category
+                // We don't re-add points to avoid duplication, since points were already added during sync
+                $existingDoc->update([
+                    'category' => $request->category,
+                    'file_url' => $fileUrl,
+                    'published_at' => $publishedAt->format('Y-m-d'),
+                    'is_kpi_counted' => $isKpi,
+                    'accreditation_period' => $accreditationPeriod,
+                    'status' => $autoVerified ? 'Approved' : 'Pending',
+                ]);
+                $doc = $existingDoc;
+            } else {
+                $doc = Document::create([
+                    'user_id' => $request->user_id,
+                    'title' => $request->title,
+                    'category' => $request->category,
+                    'file_url' => $fileUrl,
+                    'published_at' => $publishedAt->format('Y-m-d'),
+                    'is_kpi_counted' => $isKpi,
+                    'accreditation_period' => $accreditationPeriod,
+                    'status' => $autoVerified ? 'Approved' : 'Pending',
+                    'awarded_points' => $awardedPoints,
+                ]);
+
+                // If auto-verified, add points to user's total KPI
+                if ($autoVerified && $awardedPoints > 0) {
+                    $doc->user->increment('total_kpi_points', $awardedPoints);
+                }
             }
 
             return $doc;

@@ -69,9 +69,14 @@ class ScholarController extends Controller
                 ]
             );
 
-            // Update user total KPI points (mock logic: 1 citation = 1 point)
-            // Or use a more complex logic
-            $user->increment('total_kpi_points', $totalCitations - ($scholarData->getOriginal('total_citations') ?? 0));
+            // Get weight for Jurnal Nasional as default for Scholar
+            $weight = \App\Models\PointWeight::where('category', 'Jurnal Nasional')->first();
+            $awardedPoints = $weight ? $weight->weight_value : 20;
+
+            // KPI Active period
+            $kpiPeriodStart = \Carbon\Carbon::parse('2025-01-01');
+            $kpiPeriodEnd   = \Carbon\Carbon::parse('2027-12-31');
+            $kpiPeriodLabel = '2025-2027';
 
             // Sync publications
             $publications = $data['articles'] ?? [];
@@ -88,6 +93,34 @@ class ScholarController extends Controller
                         'citations' => $citations,
                     ]
                 );
+
+                // Add to Document table automatically if within KPI period
+                if ($year) {
+                    $publishedAt = \Carbon\Carbon::createFromDate($year, 1, 1);
+                    $isKpi = $publishedAt->between($kpiPeriodStart, $kpiPeriodEnd);
+
+                    if ($isKpi) {
+                        $doc = \App\Models\Document::firstOrCreate(
+                            [
+                                'user_id' => $user->id,
+                                'title' => $pub['title']
+                            ],
+                            [
+                                'category' => 'Jurnal Nasional',
+                                'file_url' => '', // Cannot be null, use empty string
+                                'published_at' => $publishedAt->format('Y-m-d'),
+                                'is_kpi_counted' => true,
+                                'accreditation_period' => $kpiPeriodLabel,
+                                'status' => 'Approved',
+                                'awarded_points' => $awardedPoints,
+                            ]
+                        );
+
+                        if ($doc->wasRecentlyCreated && $awardedPoints > 0) {
+                            $user->increment('total_kpi_points', $awardedPoints);
+                        }
+                    }
+                }
             }
         });
 

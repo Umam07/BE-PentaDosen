@@ -92,6 +92,15 @@ class ScopusController extends Controller
             // Clear old publications
             $user->scopusPublications()->delete();
 
+            // Get weight for Jurnal Internasional as default for Scopus
+            $weight = \App\Models\PointWeight::where('category', 'Jurnal Internasional')->first();
+            $awardedPoints = $weight ? $weight->weight_value : 40;
+
+            // KPI Active period
+            $kpiPeriodStart = \Carbon\Carbon::parse('2025-01-01');
+            $kpiPeriodEnd   = \Carbon\Carbon::parse('2027-12-31');
+            $kpiPeriodLabel = '2025-2027';
+
             // Insert new publications
             $publicationsToInsert = [];
             foreach ($entries as $entry) {
@@ -115,6 +124,34 @@ class ScopusController extends Controller
                     'created_at' => now(),
                     'updated_at' => now(),
                 ];
+
+                // Add to Document table automatically if within KPI period
+                if ($year) {
+                    $publishedAt = \Carbon\Carbon::createFromDate($year, 1, 1);
+                    $isKpi = $publishedAt->between($kpiPeriodStart, $kpiPeriodEnd);
+
+                    if ($isKpi) {
+                        $doc = \App\Models\Document::firstOrCreate(
+                            [
+                                'user_id' => $user->id,
+                                'title' => $entry['dc:title']
+                            ],
+                            [
+                                'category' => 'Jurnal Internasional',
+                                'file_url' => '', // Cannot be null, use empty string
+                                'published_at' => $publishedAt->format('Y-m-d'),
+                                'is_kpi_counted' => true,
+                                'accreditation_period' => $kpiPeriodLabel,
+                                'status' => 'Approved',
+                                'awarded_points' => $awardedPoints,
+                            ]
+                        );
+
+                        if ($doc->wasRecentlyCreated && $awardedPoints > 0) {
+                            $user->increment('total_kpi_points', $awardedPoints);
+                        }
+                    }
+                }
             }
             
             if (!empty($publicationsToInsert)) {
