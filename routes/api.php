@@ -29,6 +29,10 @@ Route::post('/admin/lecturers/bulk-scholar', [AdminController::class, 'bulkUpdat
 Route::post('/admin/lecturers/bulk-scopus', [AdminController::class, 'bulkUpdateScopus']);
 Route::post('/admin/documents/{id}/verify', [AdminController::class, 'verifyDocument']);
 
+Route::post('/penelitian', [\App\Http\Controllers\PenelitianController::class, 'store']);
+Route::get('/penelitian', [\App\Http\Controllers\PenelitianController::class, 'index']);
+Route::post('/penelitian/{id}/verify', [\App\Http\Controllers\PenelitianController::class, 'verify']);
+
 Route::get('/leaderboard', [UserController::class, 'leaderboard']);
 Route::get('/charts/prodi', [UserController::class, 'chartProdi']);
 Route::get('/charts/fakultas', [UserController::class, 'chartFakultas']);

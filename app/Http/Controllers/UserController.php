@@ -112,6 +112,10 @@ class UserController extends Controller
             ->orderBy('total_points', 'desc')
             ->first();
 
+        $totalScholar = \App\Models\ScholarPublication::count();
+        $totalScopus = \App\Models\ScopusPublication::count();
+        $totalResearch = \App\Models\Penelitian::count();
+
         return response()->json([
             'total_users' => $totalUsers,
             'total_dosen' => $totalDosen,
@@ -120,6 +124,9 @@ class UserController extends Controller
             'approved_docs' => $approvedDocs,
             'total_citations' => $totalCitations,
             'top_prodi' => $topProdi,
+            'total_scholar' => $totalScholar,
+            'total_scopus' => $totalScopus,
+            'total_research' => $totalResearch,
         ]);
     }
 }

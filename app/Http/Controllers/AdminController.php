@@ -11,11 +11,29 @@ use Illuminate\Support\Facades\DB;
 
 class AdminController extends Controller
 {
-    public function getPendingDocuments()
+    public function getPendingDocuments(Request $request)
     {
-        $docs = Document::with('user')
-            ->where('status', 'Pending')
-            ->orderBy('created_at', 'asc')
+        $role = $request->query('role');
+        $userId = $request->query('user_id');
+
+        $query = Document::with('user');
+
+        if ($role === 'prodi') {
+            $query->where('status', 'Pending');
+            $admin = User::find($userId);
+            if ($admin && $admin->program_studi) {
+                $query->whereHas('user', function ($q) use ($admin) {
+                    $q->where('program_studi', $admin->program_studi);
+                });
+            }
+        } elseif ($role === 'admin') {
+            $query->where('status', 'Verified by Prodi');
+        } else {
+            // Default behavior if role is unknown or not provided
+            $query->where('status', 'Pending');
+        }
+
+        $docs = $query->orderBy('created_at', 'asc')
             ->get()
             ->map(function ($doc) {
                 return array_merge($doc->toArray(), ['user_name' => $doc->user->name]);
@@ -24,10 +42,23 @@ class AdminController extends Controller
         return response()->json(['documents' => $docs]);
     }
 
-    public function getAllDocuments()
+    public function getAllDocuments(Request $request)
     {
-        $docs = Document::with('user')
-            ->orderBy('created_at', 'desc')
+        $role = $request->query('role');
+        $userId = $request->query('user_id');
+
+        $query = Document::with('user');
+
+        if ($role === 'prodi') {
+            $admin = User::find($userId);
+            if ($admin && $admin->program_studi) {
+                $query->whereHas('user', function ($q) use ($admin) {
+                    $q->where('program_studi', $admin->program_studi);
+                });
+            }
+        }
+
+        $docs = $query->orderBy('created_at', 'desc')
             ->get()
             ->map(function ($doc) {
                 return array_merge($doc->toArray(), ['user_name' => $doc->user->name]);
@@ -36,11 +67,22 @@ class AdminController extends Controller
         return response()->json(['documents' => $docs]);
     }
 
-    public function getAllLecturers()
+    public function getAllLecturers(Request $request)
     {
-        $lecturers = User::with(['scholarData', 'scopusData'])
-            ->where('role', 'dosen')
-            ->orderBy('name', 'asc')
+        $role = $request->query('role');
+        $userId = $request->query('user_id');
+
+        $query = User::with(['scholarData', 'scopusData'])
+            ->where('role', 'dosen');
+
+        if ($role === 'prodi') {
+            $admin = User::find($userId);
+            if ($admin && $admin->program_studi) {
+                $query->where('program_studi', $admin->program_studi);
+            }
+        }
+
+        $lecturers = $query->orderBy('name', 'asc')
             ->get()
             ->map(function ($u) {
                 return [
@@ -69,9 +111,17 @@ class AdminController extends Controller
     public function verifyDocument(Request $request, $id)
     {
         $status = $request->status; // 'Approved' or 'Rejected'
+        $role = $request->role; // 'admin' or 'prodi'
         $doc = Document::findOrFail($id);
 
         if ($status === 'Approved') {
+            if ($role === 'prodi') {
+                // If prodi approves, move to next stage
+                $doc->update(['status' => 'Verified by Prodi']);
+                return response()->json(['success' => true, 'message' => 'Document verified by prodi. Waiting for admin approval.']);
+            }
+
+            // Final Admin approval logic
             $weight = PointWeight::where('category', $doc->category)->first();
             $categoryPoints = $weight ? $weight->weight_value : 0;
 
@@ -88,6 +138,7 @@ class AdminController extends Controller
                 }
             });
         } else {
+            // Either prodi or admin can reject
             $doc->update(['status' => $status]);
         }
 

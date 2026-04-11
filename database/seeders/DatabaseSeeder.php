@@ -22,22 +22,40 @@ class DatabaseSeeder extends Seeder
         \App\Models\PointWeight::updateOrCreate(['category' => 'Proposal'], ['weight_value' => 10]);
         \App\Models\PointWeight::updateOrCreate(['category' => 'Laporan'], ['weight_value' => 10]);
 
-        // Default users
-        $u1 = User::updateOrCreate(
+        // Lecturers (Dosen)
+        User::updateOrCreate(
             ['email' => 'dosen1@univ.edu'],
-            ['id' => 1, 'name' => 'Dr. Budi Santoso', 'role' => 'dosen', 'scholar_id' => null, 'fakultas' => 'Fakultas Teknologi Informasi', 'program_studi' => 'Teknik Informatika', 'password' => bcrypt('password'), 'total_kpi_points' => 0]
-        );
-        $u2 = User::updateOrCreate(
-            ['email' => 'dosen2@univ.edu'],
-            ['id' => 2, 'name' => 'Prof. Siti Aminah', 'role' => 'dosen', 'scholar_id' => null, 'fakultas' => 'Fakultas Teknologi Informasi', 'program_studi' => 'Perpustakaan dan Sains Informasi', 'password' => bcrypt('password'), 'total_kpi_points' => 0]
+            ['name' => 'Dr. Budi Santoso', 'role' => 'dosen', 'scholar_id' => null, 'fakultas' => 'Fakultas Teknologi Informasi', 'program_studi' => 'Teknik Informatika', 'password' => bcrypt('password'), 'total_kpi_points' => 0]
         );
         User::updateOrCreate(
+            ['email' => 'dosen2@univ.edu'],
+            ['name' => 'Prof. Siti Aminah', 'role' => 'dosen', 'scholar_id' => null, 'fakultas' => 'Fakultas Kedokteran', 'program_studi' => 'Kedokteran Umum', 'password' => bcrypt('password'), 'total_kpi_points' => 0]
+        );
+        User::updateOrCreate(
+            ['email' => 'kiki@univ.edu'],
+            ['name' => 'Kiki Aimar Wicaksana', 'role' => 'dosen', 'fakultas' => 'Fakultas Ekonomi dan Bisnis', 'program_studi' => 'Akuntansi', 'password' => bcrypt('password')]
+        );
+        User::updateOrCreate(
+            ['email' => 'danis@univ.edu'],
+            ['name' => 'Rafi Danis', 'role' => 'dosen', 'fakultas' => 'Fakultas Hukum', 'program_studi' => 'Ilmu Hukum', 'password' => bcrypt('password')]
+        );
+        User::updateOrCreate(
+            ['email' => 'umam@univ.edu'],
+            ['name' => "Muhammad Syafi'ul Umam", 'role' => 'dosen', 'fakultas' => 'Fakultas Ilmu Sosial dan Politik', 'program_studi' => 'Sosiologi', 'password' => bcrypt('password')]
+        );
+
+        // Administration & Leadership
+        User::updateOrCreate(
             ['email' => 'admin@univ.edu'],
-            ['id' => 3, 'name' => 'Admin Pusat', 'role' => 'admin', 'password' => bcrypt('password')]
+            ['name' => 'Admin LPPM', 'role' => 'admin', 'password' => bcrypt('password')]
+        );
+        User::updateOrCreate(
+            ['email' => 'prodi@univ.edu'],
+            ['name' => 'Admin Prodi TI', 'role' => 'prodi', 'program_studi' => 'Teknik Informatika', 'password' => bcrypt('password')]
         );
         User::updateOrCreate(
             ['email' => 'rektor@univ.edu'],
-            ['id' => 4, 'name' => 'Rektor', 'role' => 'pimpinan', 'password' => bcrypt('password')]
+            ['name' => 'Rektor', 'role' => 'pimpinan', 'password' => bcrypt('password')]
         );
 
         // Scholar data will be synced via real API instead of initialized with dummy data

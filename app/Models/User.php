@@ -57,6 +57,11 @@ class User extends Authenticatable
         return $this->hasMany(Document::class);
     }
 
+    public function penelitian()
+    {
+        return $this->hasMany(Penelitian::class);
+    }
+
     /**
      * The attributes that should be hidden for serialization.
      *
