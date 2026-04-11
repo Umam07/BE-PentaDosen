@@ -112,6 +112,30 @@ class UserController extends Controller
             ->orderBy('total_points', 'desc')
             ->first();
 
+        // Count unique prodi
+        $totalProdi = User::where('role', 'dosen')
+            ->whereNotNull('program_studi')
+            ->where('program_studi', '!=', '')
+            ->distinct('program_studi')
+            ->count('program_studi');
+
+        // Top Performer
+        $topPerformer = User::where('role', 'dosen')
+            ->orderBy('total_kpi_points', 'desc')
+            ->first(['name', 'total_kpi_points']);
+
+        // KPI Score 3 Years (Current year and 2 previous years)
+        $currentYear = now()->year;
+        $threeYearsAgo = $currentYear - 2;
+        $kpiScore3Years = \App\Models\Document::where('status', 'Approved')
+            ->whereYear('published_at', '>=', $threeYearsAgo)
+            ->sum('awarded_points');
+
+        // KPI Score This Year
+        $kpiScoreThisYear = \App\Models\Document::where('status', 'Approved')
+            ->whereYear('published_at', $currentYear)
+            ->sum('awarded_points');
+
         $totalScholar = \App\Models\ScholarPublication::count();
         $totalScopus = \App\Models\ScopusPublication::count();
         $totalResearch = \App\Models\Penelitian::count();
@@ -119,11 +143,15 @@ class UserController extends Controller
         return response()->json([
             'total_users' => $totalUsers,
             'total_dosen' => $totalDosen,
+            'total_prodi' => $totalProdi,
             'total_points' => $totalPoints,
             'total_docs' => $totalDocs,
             'approved_docs' => $approvedDocs,
             'total_citations' => $totalCitations,
             'top_prodi' => $topProdi,
+            'top_performer' => $topPerformer,
+            'kpi_score_3_years' => $kpiScore3Years,
+            'kpi_score_this_year' => $kpiScoreThisYear,
             'total_scholar' => $totalScholar,
             'total_scopus' => $totalScopus,
             'total_research' => $totalResearch,
