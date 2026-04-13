@@ -63,10 +63,23 @@ class UserController extends Controller
 
     public function leaderboard()
     {
-        $leaderboard = User::where('role', 'dosen')
+        $leaderboard = User::with(['scholarData', 'scopusData'])
+            ->where('role', 'dosen')
             ->orderBy('total_kpi_points', 'desc')
-            ->limit(10)
-            ->get(['id', 'name', 'program_studi', 'total_kpi_points']);
+            ->get()
+            ->map(function ($u) {
+                return [
+                    'id' => $u->id,
+                    'name' => $u->name,
+                    'program_studi' => $u->program_studi,
+                    'total_kpi_points' => $u->total_kpi_points,
+                    'total_citations' => $u->scholarData->total_citations ?? 0,
+                    'h_index' => $u->scholarData->h_index ?? 0,
+                    'scopus_total_citations' => $u->scopusData->total_citations ?? 0,
+                    'scopus_h_index' => $u->scopusData->h_index ?? 0,
+                    'thumbnail' => $u->scholarData->thumbnail ?? null,
+                ];
+            });
         
         return response()->json(['leaderboard' => $leaderboard]);
     }
@@ -76,9 +89,23 @@ class UserController extends Controller
         $data = User::where('role', 'dosen')
             ->whereNotNull('program_studi')
             ->where('program_studi', '!=', '')
-            ->select('program_studi', DB::raw('SUM(total_kpi_points) as total_points'))
+            ->select(
+                'program_studi', 
+                DB::raw('SUM(total_kpi_points) as total_points'),
+                DB::raw('COUNT(*) as dosen_count')
+            )
             ->groupBy('program_studi')
             ->get();
+        
+        // Add research count for each prodi
+        $data = $data->map(function($item) {
+            $researchCount = \App\Models\Penelitian::whereHas('user', function($query) use ($item) {
+                $query->where('program_studi', $item->program_studi);
+            })->count();
+            
+            $item->research_count = $researchCount;
+            return $item;
+        });
         
         return response()->json(['data' => $data]);
     }

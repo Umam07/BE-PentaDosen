@@ -51,13 +51,13 @@ class PenelitianController extends Controller
         $userId = $request->query('user_id');
         $role = $request->query('role');
 
-        if ($role === 'admin') {
+        if ($role === 'admin lppm') {
             // Admin only sees what prodi has verified
             $penelitian = Penelitian::where('status', 'Verified by Prodi')
                 ->with('user')
                 ->orderBy('created_at', 'desc')
                 ->get();
-        } elseif ($role === 'prodi') {
+        } elseif ($role === 'admin prodi') {
              $admin = User::find($userId);
              if ($admin && $admin->program_studi) {
                  // Prodi sees pending research from their own department
@@ -90,7 +90,7 @@ class PenelitianController extends Controller
         $role = $request->role;
         
         if ($request->status === 'Approved') {
-            if ($role === 'prodi') {
+            if ($role === 'admin prodi') {
                 if ($penelitian->status !== 'Pending') {
                     return response()->json(['success' => false, 'message' => 'Penelitian sudah diverifikasi prodi atau tahap admin.'], 400);
                 }

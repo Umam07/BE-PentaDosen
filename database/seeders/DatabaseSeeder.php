@@ -25,33 +25,33 @@ class DatabaseSeeder extends Seeder
         // Lecturers (Dosen)
         User::updateOrCreate(
             ['email' => 'dosen1@univ.edu'],
-            ['name' => 'Dr. Budi Santoso', 'role' => 'dosen', 'scholar_id' => null, 'fakultas' => 'Fakultas Teknologi Informasi', 'program_studi' => 'Teknik Informatika', 'password' => bcrypt('password'), 'total_kpi_points' => 0]
+            ['name' => 'Chandra Prasetyo Utomo, S.Kom, M.Kom.', 'role' => 'dosen', 'scholar_id' => '86JsILAAAAAJ&hl', 'scopus_id' => '36656758200', 'fakultas' => 'Fakultas Teknologi Informasi', 'program_studi' => 'Teknik Informatika', 'password' => bcrypt('password'), 'total_kpi_points' => 0]
         );
         User::updateOrCreate(
             ['email' => 'dosen2@univ.edu'],
-            ['name' => 'Prof. Siti Aminah', 'role' => 'dosen', 'scholar_id' => null, 'fakultas' => 'Fakultas Kedokteran', 'program_studi' => 'Kedokteran Umum', 'password' => bcrypt('password'), 'total_kpi_points' => 0]
+            ['name' => 'Kholis Ernawati, Dr. S.Si., M.Kes.', 'role' => 'dosen', 'scholar_id' => 'kvM1yXcAAAAJ&hl', 'scopus_id' => '57210110753', 'fakultas' => 'Fakultas Kedokteran', 'program_studi' => 'Kedokteran', 'password' => bcrypt('password'), 'total_kpi_points' => 0]
         );
         User::updateOrCreate(
             ['email' => 'kiki@univ.edu'],
-            ['name' => 'Kiki Aimar Wicaksana', 'role' => 'dosen', 'fakultas' => 'Fakultas Ekonomi dan Bisnis', 'program_studi' => 'Akuntansi', 'password' => bcrypt('password')]
+            ['name' => 'Kiki Aimar Wicaksana', 'role' => 'dosen', 'scholar_id' => 'V4Qtn5YAAAAJ&hl  ', 'scopus_id' => '60103952600', 'fakultas' => 'Fakultas Ekonomi dan Bisnis', 'program_studi' => 'Akuntansi', 'password' => bcrypt('password')]
         );
         User::updateOrCreate(
             ['email' => 'danis@univ.edu'],
-            ['name' => 'Rafi Danis', 'role' => 'dosen', 'fakultas' => 'Fakultas Hukum', 'program_studi' => 'Ilmu Hukum', 'password' => bcrypt('password')]
+            ['name' => 'Rafi Danis', 'role' => 'dosen', 'scholar_id' => 'ghULz5YAAAAJ&hl', 'scopus_id' => '57205016667', 'fakultas' => 'Fakultas Hukum', 'program_studi' => 'Hukum', 'password' => bcrypt('password')]
         );
         User::updateOrCreate(
             ['email' => 'umam@univ.edu'],
-            ['name' => "Muhammad Syafi'ul Umam", 'role' => 'dosen', 'fakultas' => 'Fakultas Ilmu Sosial dan Politik', 'program_studi' => 'Sosiologi', 'password' => bcrypt('password')]
+            ['name' => "Muhammad Syafi'ul Umam", 'role' => 'dosen', 'scholar_id' => 'tBjAaI0AAAAJ&hl', 'scopus_id' => '57220091394', 'fakultas' => 'Fakultas Psikologi', 'program_studi' => 'Psikologi', 'password' => bcrypt('password')]
         );
 
         // Administration & Leadership
         User::updateOrCreate(
             ['email' => 'admin@univ.edu'],
-            ['name' => 'Admin LPPM', 'role' => 'admin', 'password' => bcrypt('password')]
+            ['name' => 'Admin LPPM', 'role' => 'admin lppm', 'password' => bcrypt('password')]
         );
         User::updateOrCreate(
             ['email' => 'prodi@univ.edu'],
-            ['name' => 'Admin Prodi TI', 'role' => 'prodi', 'program_studi' => 'Teknik Informatika', 'password' => bcrypt('password')]
+            ['name' => 'Admin Prodi TI', 'role' => 'admin prodi', 'fakultas' => 'Fakultas Teknologi Informasi', 'program_studi' => 'Teknik Informatika', 'password' => bcrypt('password')]
         );
         User::updateOrCreate(
             ['email' => 'rektor@univ.edu'],

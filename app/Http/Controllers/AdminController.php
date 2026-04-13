@@ -18,7 +18,7 @@ class AdminController extends Controller
 
         $query = Document::with('user');
 
-        if ($role === 'prodi') {
+        if ($role === 'admin prodi') {
             $query->where('status', 'Pending');
             $admin = User::find($userId);
             if ($admin && $admin->program_studi) {
@@ -26,7 +26,7 @@ class AdminController extends Controller
                     $q->where('program_studi', $admin->program_studi);
                 });
             }
-        } elseif ($role === 'admin') {
+        } elseif ($role === 'admin lppm') {
             $query->where('status', 'Verified by Prodi');
         } else {
             // Default behavior if role is unknown or not provided
@@ -36,7 +36,7 @@ class AdminController extends Controller
         $docs = $query->orderBy('created_at', 'asc')
             ->get()
             ->map(function ($doc) {
-                return array_merge($doc->toArray(), ['user_name' => $doc->user->name]);
+                return array_merge($doc->toArray(), ['user_name' => $doc->user->name, 'fakultas' => $doc->user->fakultas]);
             });
 
         return response()->json(['documents' => $docs]);
@@ -49,7 +49,7 @@ class AdminController extends Controller
 
         $query = Document::with('user');
 
-        if ($role === 'prodi') {
+        if ($role === 'admin prodi') {
             $admin = User::find($userId);
             if ($admin && $admin->program_studi) {
                 $query->whereHas('user', function ($q) use ($admin) {
@@ -61,7 +61,7 @@ class AdminController extends Controller
         $docs = $query->orderBy('created_at', 'desc')
             ->get()
             ->map(function ($doc) {
-                return array_merge($doc->toArray(), ['user_name' => $doc->user->name]);
+                return array_merge($doc->toArray(), ['user_name' => $doc->user->name, 'fakultas' => $doc->user->fakultas]);
             });
 
         return response()->json(['documents' => $docs]);
@@ -75,7 +75,7 @@ class AdminController extends Controller
         $query = User::with(['scholarData', 'scopusData'])
             ->where('role', 'dosen');
 
-        if ($role === 'prodi') {
+        if ($role === 'admin prodi') {
             $admin = User::find($userId);
             if ($admin && $admin->program_studi) {
                 $query->where('program_studi', $admin->program_studi);
@@ -89,6 +89,7 @@ class AdminController extends Controller
                     'id' => $u->id,
                     'name' => $u->name,
                     'email' => $u->email,
+                    'fakultas' => $u->fakultas,
                     'program_studi' => $u->program_studi,
                     'scholar_id' => $u->scholar_id,
                     'scopus_id' => $u->scopus_id,
@@ -111,11 +112,11 @@ class AdminController extends Controller
     public function verifyDocument(Request $request, $id)
     {
         $status = $request->status; // 'Approved' or 'Rejected'
-        $role = $request->role; // 'admin' or 'prodi'
+        $role = $request->role; // 'admin lppm' or 'admin prodi'
         $doc = Document::findOrFail($id);
 
         if ($status === 'Approved') {
-            if ($role === 'prodi') {
+            if ($role === 'admin prodi') {
                 // If prodi approves, move to next stage
                 $doc->update(['status' => 'Verified by Prodi']);
                 return response()->json(['success' => true, 'message' => 'Document verified by prodi. Waiting for admin approval.']);
@@ -138,7 +139,7 @@ class AdminController extends Controller
                 }
             });
         } else {
-            // Either prodi or admin can reject
+            // Either admin prodi or admin lppm can reject
             $doc->update(['status' => $status]);
         }
 
