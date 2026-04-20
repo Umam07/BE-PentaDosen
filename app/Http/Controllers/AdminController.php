@@ -27,7 +27,7 @@ class AdminController extends Controller
                 });
             }
         } elseif ($role === 'admin lppm') {
-            $query->where('status', 'Verified by Prodi');
+            $query->whereIn('status', ['Pending', 'Verified by Prodi']);
         } else {
             // Default behavior if role is unknown or not provided
             $query->where('status', 'Pending');

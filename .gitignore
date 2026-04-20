@@ -3,6 +3,7 @@
 .env
 .env.backup
 .env.production
+RAILWAY_GUIDE.md
 .phpactor.json
 .phpunit.result.cache
 /.fleet

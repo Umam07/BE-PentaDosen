@@ -52,8 +52,7 @@ class PenelitianController extends Controller
         $role = $request->query('role');
 
         if ($role === 'admin lppm') {
-            // Admin only sees what prodi has verified
-            $penelitian = Penelitian::where('status', 'Verified by Prodi')
+            $penelitian = Penelitian::whereIn('status', ['Pending', 'Verified by Prodi'])
                 ->with('user')
                 ->orderBy('created_at', 'desc')
                 ->get();
@@ -100,7 +99,7 @@ class PenelitianController extends Controller
             }
 
             // Admin Approval Logic
-            if ($penelitian->status !== 'Verified by Prodi') {
+            if ($role !== 'admin lppm' && $penelitian->status !== 'Verified by Prodi') {
                 return response()->json(['success' => false, 'message' => 'Penelitian harus diverifikasi prodi terlebih dahulu.'], 400);
             }
 
