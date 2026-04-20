@@ -18,7 +18,7 @@ return Application::configure(basePath: dirname(__DIR__))
         $exceptions->render(function (\Illuminate\Http\Exceptions\ThrottleRequestsException $e, \Illuminate\Http\Request $request) {
             return response()->json([
                 'success' => false,
-                'message' => 'Waktu session telah habis. Silakan login kembali untuk melanjutkan.',
+                'message' => 'Waktu session telah habis. Silahkan login kembali untuk melanjutkan.',
             ], 429);
         });
     })->create();
