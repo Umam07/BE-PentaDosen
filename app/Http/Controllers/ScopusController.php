@@ -7,6 +7,7 @@ use App\Models\User;
 use App\Models\ScopusData;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Cache;
 
 class ScopusController extends Controller
 {
@@ -172,39 +173,41 @@ class ScopusController extends Controller
 
     public function checkId($scopus_id)
     {
-        $apiKey = config('services.scopus.key');
-        if (!$apiKey) {
-            return response()->json(['error' => 'Scopus API Key not configured'], 500);
-        }
+        return Cache::remember("scopus_check_{$scopus_id}", 86400, function() use ($scopus_id) {
+            $apiKey = config('services.scopus.key');
+            if (!$apiKey) {
+                return response()->json(['error' => 'Scopus API Key not configured'], 500);
+            }
 
-        // Test the author ID validity using Search API bypassing restrictions
-        $response = Http::withHeaders([
-            'X-ELS-APIKey' => $apiKey,
-            'Accept' => 'application/json'
-        ])->get("https://api.elsevier.com/content/search/scopus", [
-            'query' => 'AU-ID(' . $scopus_id . ')',
-            'count' => 1
-        ]);
+            // Test the author ID validity using Search API bypassing restrictions
+            $response = Http::withHeaders([
+                'X-ELS-APIKey' => $apiKey,
+                'Accept' => 'application/json'
+            ])->get("https://api.elsevier.com/content/search/scopus", [
+                'query' => 'AU-ID(' . $scopus_id . ')',
+                'count' => 1
+            ]);
 
-        if ($response->failed()) {
-            return response()->json(['error' => 'Failed to connect to Scopus'], 500);
-        }
+            if ($response->failed()) {
+                return response()->json(['error' => 'Failed to connect to Scopus'], 500);
+            }
 
-        $data = $response->json();
-        
-        // If no documents found, we can't verify the author easily through standard free API
-        if (empty($data['search-results']['entry']) || !isset($data['search-results']['entry'][0]['dc:title'])) {
-            return response()->json(['error' => 'Author/Documents not found. Please ensure the author has registered documents.'], 404);
-        }
+            $data = $response->json();
+            
+            // If no documents found, we can't verify the author easily through standard free API
+            if (empty($data['search-results']['entry']) || !isset($data['search-results']['entry'][0]['dc:title'])) {
+                return response()->json(['error' => 'Author/Documents not found. Please ensure the author has registered documents.'], 404);
+            }
 
-        $authorInfo = $data['search-results']['entry'][0];
-        $name = $authorInfo['dc:creator'] ?? 'Scopus Author ID: ' . $scopus_id;
-        $affiliation = $authorInfo['affiliation'][0]['affilname'] ?? 'Pencarian Scopus';
+            $authorInfo = $data['search-results']['entry'][0];
+            $name = $authorInfo['dc:creator'] ?? 'Scopus Author ID: ' . $scopus_id;
+            $affiliation = $authorInfo['affiliation'][0]['affilname'] ?? 'Pencarian Scopus';
 
-        return response()->json([
-            'success' => true,
-            'name' => trim($name),
-            'affiliations' => is_string($affiliation) ? $affiliation : 'Scopus Author'
-        ]);
+            return response()->json([
+                'success' => true,
+                'name' => trim($name),
+                'affiliations' => is_string($affiliation) ? $affiliation : 'Scopus Author'
+            ]);
+        });
     }
 }

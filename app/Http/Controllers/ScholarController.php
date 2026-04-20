@@ -9,6 +9,7 @@ use App\Models\ScholarData;
 use App\Models\ScholarPublication;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Cache;
 
 class ScholarController extends Controller
 {
@@ -137,37 +138,39 @@ class ScholarController extends Controller
 
     public function checkId($scholar_id)
     {
-        $apiKey = config('services.serpapi.key');
-        if (!$apiKey) {
-            return response()->json(['error' => 'SerpApi Key not configured'], 500);
-        }
+        return Cache::remember("scholar_check_{$scholar_id}", 86400, function() use ($scholar_id) {
+            $apiKey = config('services.serpapi.key');
+            if (!$apiKey) {
+                return response()->json(['error' => 'SerpApi Key not configured'], 500);
+            }
 
-        $response = Http::get('https://serpapi.com/search.json', [
-            'engine' => 'google_scholar_author',
-            'author_id' => $scholar_id,
-            'api_key' => $apiKey
-        ]);
+            $response = Http::get('https://serpapi.com/search.json', [
+                'engine' => 'google_scholar_author',
+                'author_id' => $scholar_id,
+                'api_key' => $apiKey
+            ]);
 
-        if ($response->failed()) {
-            return response()->json(['error' => 'Failed to fetch data from SerpApi'], 500);
-        }
+            if ($response->failed()) {
+                return response()->json(['error' => 'Failed to fetch data from SerpApi'], 500);
+            }
 
-        $data = $response->json();
-        
-        if (isset($data['error'])) {
-             return response()->json(['error' => 'Author not found'], 404);
-        }
+            $data = $response->json();
+            
+            if (isset($data['error'])) {
+                 return response()->json(['error' => 'Author not found'], 404);
+            }
 
-        $author = $data['author'] ?? null;
-        if (!$author) {
-            return response()->json(['error' => 'Author information not found for this ID'], 404);
-        }
+            $author = $data['author'] ?? null;
+            if (!$author) {
+                return response()->json(['error' => 'Author information not found for this ID'], 404);
+            }
 
-        return response()->json([
-            'success' => true,
-            'name' => $author['name'] ?? 'Unknown',
-            'affiliations' => $author['affiliations'] ?? 'Unknown Affiliation',
-            'thumbnail' => $author['thumbnail'] ?? null
-        ]);
+            return response()->json([
+                'success' => true,
+                'name' => $author['name'] ?? 'Unknown',
+                'affiliations' => $author['affiliations'] ?? 'Unknown Affiliation',
+                'thumbnail' => $author['thumbnail'] ?? null
+            ]);
+        });
     }
 }

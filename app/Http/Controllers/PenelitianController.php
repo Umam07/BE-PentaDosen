@@ -7,6 +7,7 @@ use App\Models\Penelitian;
 use App\Models\User;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Cache;
 
 class PenelitianController extends Controller
 {
@@ -39,6 +40,9 @@ class PenelitianController extends Controller
             'awarded_points' => 0,
         ]);
 
+        // Clear cache
+        Cache::tags(['penelitian'])->flush();
+
         return response()->json([
             'success' => true,
             'message' => 'Penelitian berhasil diunggah. Menunggu verifikasi admin.',
@@ -50,27 +54,30 @@ class PenelitianController extends Controller
     {
         $userId = $request->query('user_id');
         $role = $request->query('role');
+        $cacheKey = "penelitian_index_{$userId}_{$role}";
 
-        if ($role === 'admin lppm') {
-            $penelitian = Penelitian::whereIn('status', ['Pending', 'Verified by Prodi'])
-                ->with('user')
-                ->orderBy('created_at', 'desc')
-                ->get();
-        } elseif ($role === 'admin prodi') {
-             $admin = User::find($userId);
-             if ($admin && $admin->program_studi) {
-                 // Prodi sees pending research from their own department
-                 $penelitian = Penelitian::where('status', 'Pending')
-                     ->whereHas('user', function($q) use ($admin) {
-                         $q->where('program_studi', $admin->program_studi);
-                     })->with('user')->orderBy('created_at', 'desc')->get();
-             } else {
-                 $penelitian = [];
-             }
-        } else {
-            // Dosen sees their own research regardless of status
-            $penelitian = Penelitian::where('user_id', $userId)->orderBy('created_at', 'desc')->get();
-        }
+        $penelitian = Cache::tags(['penelitian'])->remember($cacheKey, 3600, function () use ($userId, $role) {
+            if ($role === 'admin lppm') {
+                return Penelitian::whereIn('status', ['Pending', 'Verified by Prodi'])
+                    ->with('user')
+                    ->orderBy('created_at', 'desc')
+                    ->get();
+            } elseif ($role === 'admin prodi') {
+                 $admin = User::find($userId);
+                 if ($admin && $admin->program_studi) {
+                     // Prodi sees pending research from their own department
+                     return Penelitian::where('status', 'Pending')
+                         ->whereHas('user', function($q) use ($admin) {
+                             $q->where('program_studi', $admin->program_studi);
+                         })->with('user')->orderBy('created_at', 'desc')->get();
+                 } else {
+                     return [];
+                 }
+            } else {
+                // Dosen sees their own research regardless of status
+                return Penelitian::where('user_id', $userId)->orderBy('created_at', 'desc')->get();
+            }
+        });
 
         return response()->json([
             'success' => true,
@@ -131,6 +138,9 @@ class PenelitianController extends Controller
             $penelitian->status = 'Rejected';
             $penelitian->save();
         }
+
+        // Clear cache
+        Cache::tags(['penelitian'])->flush();
 
         return response()->json([
             'success' => true,
