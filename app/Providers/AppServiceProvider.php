@@ -24,9 +24,9 @@ class AppServiceProvider extends ServiceProvider
             return \Illuminate\Cache\RateLimiting\Limit::perMinute(60)->by($request->user()?->id ?: $request->ip());
         });
 
-        // Authentication Rate Limiter (5 attempts per minute)
+        // Authentication Rate Limiter (Total 5 attempts per minute for ALL users combined)
         \Illuminate\Support\Facades\RateLimiter::for('auth', function (\Illuminate\Http\Request $request) {
-            return \Illuminate\Cache\RateLimiting\Limit::perMinute(5)->by($request->ip());
+            return \Illuminate\Cache\RateLimiting\Limit::perMinute(5)->by('global-login-limit');
         });
     }
 }
