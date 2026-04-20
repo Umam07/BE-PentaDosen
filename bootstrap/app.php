@@ -14,6 +14,11 @@ return Application::configure(basePath: dirname(__DIR__))
     ->withMiddleware(function (Middleware $middleware): void {
         //
     })
-    ->withExceptions(function (Exceptions $exceptions): void {
-        //
+    ->withExceptions(function (\Illuminate\Foundation\Configuration\Exceptions $exceptions): void {
+        $exceptions->render(function (\Illuminate\Http\Exceptions\ThrottleRequestsException $e, \Illuminate\Http\Request $request) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Waktu session telah habis. Silakan login kembali untuk melanjutkan.',
+            ], 429);
+        });
     })->create();
