@@ -27,6 +27,7 @@ class UserController extends Controller
             'email' => $request->email,
             'password' => Hash::make($request->password),
             'role' => 'dosen',
+            'penta_id' => $this->generatePentaId(),
             'fakultas' => $request->fakultas,
             'program_studi' => $request->program_studi,
             'total_kpi_points' => 0,
@@ -41,15 +42,38 @@ class UserController extends Controller
     {
         $user = User::where('email', $request->email)->first();
         if ($user && Hash::check($request->password, $user->password)) {
+            // Generate Penta ID if it doesn't exist yet (for legacy users)
+            if (!$user->penta_id) {
+                $user->penta_id = $this->generatePentaId();
+                $user->save();
+            }
+            
             \App\Models\ActivityLog::log($user->id, 'Login', 'User berhasil login ke sistem');
             return response()->json(['user' => $user]);
         }
         return response()->json(['error' => 'Invalid credentials'], 401);
     }
 
+    private function generatePentaId()
+    {
+        do {
+            // Generate a random 7-digit number
+            $pentaId = str_pad(mt_rand(1, 9999999), 7, '0', STR_PAD_LEFT);
+        } while (User::where('penta_id', $pentaId)->exists());
+        
+        return $pentaId;
+    }
+
     public function profile($id)
     {
         $user = User::findOrFail($id);
+        
+        // Generate Penta ID if it doesn't exist yet (for legacy users)
+        if (!$user->penta_id) {
+            $user->penta_id = $this->generatePentaId();
+            $user->save();
+        }
+
         $scholarData = ScholarData::where('user_id', $user->id)->first();
         $scopusData = \App\Models\ScopusData::where('user_id', $user->id)->first();
         $publications = ScholarPublication::where('user_id', $user->id)->orderBy('year', 'desc')->get();

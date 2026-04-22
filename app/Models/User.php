@@ -27,6 +27,7 @@ class User extends Authenticatable
         'role',
         'scholar_id',
         'scopus_id',
+        'penta_id',
         'total_kpi_points',
         'program_studi',
         'fakultas',
