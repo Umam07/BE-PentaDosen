@@ -32,6 +32,8 @@ class UserController extends Controller
             'total_kpi_points' => 0,
         ]);
 
+        \App\Models\ActivityLog::log($user->id, 'Register', 'User mendaftar ke dalam sistem');
+
         return response()->json(['user' => $user]);
     }
 
@@ -39,6 +41,7 @@ class UserController extends Controller
     {
         $user = User::where('email', $request->email)->first();
         if ($user && Hash::check($request->password, $user->password)) {
+            \App\Models\ActivityLog::log($user->id, 'Login', 'User berhasil login ke sistem');
             return response()->json(['user' => $user]);
         }
         return response()->json(['error' => 'Invalid credentials'], 401);

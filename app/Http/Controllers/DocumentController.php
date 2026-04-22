@@ -114,6 +114,8 @@ class DocumentController extends Controller
             return $doc;
         });
 
+        \App\Models\ActivityLog::log($request->user_id, 'Upload Document', 'User mengunggah dokumen: ' . $request->title);
+
         return response()->json([
             'success' => true,
             'docId' => $doc->id,

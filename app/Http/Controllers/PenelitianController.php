@@ -142,6 +142,10 @@ class PenelitianController extends Controller
         // Clear cache
         Cache::tags(['penelitian'])->flush();
 
+        if ($request->admin_id) {
+            \App\Models\ActivityLog::log($request->admin_id, 'Verifikasi Penelitian', "Mengubah status penelitian '{$penelitian->judul_penelitian}' menjadi {$request->status}");
+        }
+
         return response()->json([
             'success' => true,
             'message' => 'Penelitian berhasil ' . ($request->status === 'Approved' ? 'disetujui/diverifikasi' : 'ditolak') . '.',

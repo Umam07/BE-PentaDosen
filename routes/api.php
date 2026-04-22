@@ -9,6 +9,7 @@ use App\Http\Controllers\DocumentController;
 use App\Http\Controllers\AdminController;
 use App\Http\Controllers\ScopusController;
 use App\Http\Controllers\PenelitianController;
+use App\Http\Controllers\ActivityLogController;
 
 // Auth Routes with strict rate limit
 Route::middleware(['throttle:auth'])->group(function () {
@@ -40,6 +41,8 @@ Route::middleware(['throttle:api'])->group(function () {
     Route::post('/penelitian', [PenelitianController::class, 'store']);
     Route::get('/penelitian', [PenelitianController::class, 'index']);
     Route::post('/penelitian/{id}/verify', [PenelitianController::class, 'verify']);
+    
+    Route::get('/admin/activity-logs', [ActivityLogController::class, 'index']);
     
     Route::get('/leaderboard', [UserController::class, 'leaderboard']);
     Route::get('/charts/prodi', [UserController::class, 'chartProdi']);

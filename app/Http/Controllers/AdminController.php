@@ -143,6 +143,10 @@ class AdminController extends Controller
             $doc->update(['status' => $status]);
         }
 
+        if ($request->admin_id) {
+            \App\Models\ActivityLog::log($request->admin_id, 'Verifikasi Dokumen', "Mengubah status dokumen '{$doc->title}' menjadi {$status}");
+        }
+
         return response()->json(['success' => true]);
     }
 
