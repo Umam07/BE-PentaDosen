@@ -13,14 +13,19 @@ return new class extends Migration
     {
         Schema::create('users', function (Blueprint $table) {
             $table->id();
+            $table->string('penta_id', 7)->unique()->nullable();
             $table->string('name');
             $table->string('email')->unique();
+            $table->string('nidn')->nullable();
+            $table->string('phone')->nullable();
             $table->timestamp('email_verified_at')->nullable();
             $table->string('password');
             $table->string('role')->default('dosen');
             $table->string('scholar_id')->nullable();
+            $table->string('scopus_id')->nullable();
             $table->integer('total_kpi_points')->default(0);
             $table->string('program_studi')->nullable();
+            $table->string('fakultas')->nullable();
             $table->rememberToken();
             $table->timestamps();
         });

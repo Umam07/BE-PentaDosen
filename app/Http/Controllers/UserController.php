@@ -12,45 +12,118 @@ use Illuminate\Support\Facades\DB;
 
 class UserController extends Controller
 {
-    public function register(Request $request)
-    {
-        $request->validate([
-            'name' => 'required|string|max:255',
-            'email' => 'required|string|email|max:255|unique:users',
-            'password' => 'required|string|min:6',
-            'fakultas' => 'required|string|in:Fakultas Kedokteran,Fakultas Kedokteran Gigi,Fakultas Teknologi Informasi,Fakultas Ekonomi Bisnis,Fakultas Hukum,Fakultas Psikologi',
-            'program_studi' => 'required|string|in:Kedokteran,Kedokteran Gigi,Teknik Informatika,Perpustakaan dan Sains Informasi,Manajemen,Akuntansi,Hukum,Psikologi',
-        ]);
-
-        $user = User::create([
-            'name' => $request->name,
-            'email' => $request->email,
-            'password' => Hash::make($request->password),
-            'role' => 'dosen',
-            'penta_id' => $this->generatePentaId(),
-            'fakultas' => $request->fakultas,
-            'program_studi' => $request->program_studi,
-            'total_kpi_points' => 0,
-        ]);
-
-        \App\Models\ActivityLog::log($user->id, 'Register', 'User mendaftar ke dalam sistem');
-
-        return response()->json(['user' => $user]);
-    }
 
     public function login(Request $request)
     {
-        $user = User::where('email', $request->email)->first();
-        if ($user && Hash::check($request->password, $user->password)) {
+        $username = $request->username ?? $request->email;
+        $password = $request->password;
+
+        if (empty($username) || empty($password)) {
+            return response()->json(['error' => 'Username and password are required'], 400);
+        }
+
+        // 1. Try local database authentication first (for seeder users and testing)
+        // This is fast and allows testing with dummy data even without LDAP access
+        $user = User::where('email', $username)->first();
+        if ($user && Hash::check($password, $user->password)) {
             // Generate Penta ID if it doesn't exist yet (for legacy users)
             if (!$user->penta_id) {
                 $user->penta_id = $this->generatePentaId();
                 $user->save();
             }
-            
-            \App\Models\ActivityLog::log($user->id, 'Login', 'User berhasil login ke sistem');
+
+            \App\Models\ActivityLog::log($user->id, 'Login', 'User berhasil login ke sistem via Database Local');
             return response()->json(['user' => $user]);
         }
+
+        // 2. Try LDAP authentication if local authentication fails or user is not found locally
+        if (extension_loaded('ldap')) {
+            $ldapHost = 'ldap://pdc.yarsi.ac.id:389';
+            $ldapBaseDn = 'dc=yarsi,dc=ac,dc=id';
+
+            $ldapConn = @ldap_connect($ldapHost);
+            if ($ldapConn) {
+                ldap_set_option($ldapConn, LDAP_OPT_PROTOCOL_VERSION, 3);
+                ldap_set_option($ldapConn, LDAP_OPT_REFERRALS, 0);
+
+                // Bind anonymously first to find the user DN
+                $ldapBind = @ldap_bind($ldapConn);
+
+                if ($ldapBind) {
+                    // If user typed email, extract the username part for LDAP uid
+                    $ldapUid = $username;
+                    if (strpos($ldapUid, '@') !== false) {
+                        $ldapUid = explode('@', $ldapUid)[0];
+                    }
+
+                    $filter = "(uid={$ldapUid})";
+                    $attributes = ['dn', 'cn', 'displayName', 'description', 'title', 'uid', 'mail', 'email', 'telephonenumber'];
+
+                    $search = @ldap_search($ldapConn, $ldapBaseDn, $filter, $attributes);
+                    if ($search) {
+                        $entries = @ldap_get_entries($ldapConn, $search);
+
+                        if ($entries && $entries['count'] > 0 && !empty($entries[0]['dn'])) {
+                            $userDn = $entries[0]['dn'];
+
+                            // Verify password against LDAP
+                            $isLdapBinded = @ldap_bind($ldapConn, $userDn, $password);
+
+                            if ($isLdapBinded) {
+                                // Successfully authenticated with LDAP
+                                $ldapData = $entries[0];
+
+                                $email = $ldapData['mail'][0] ?? ($ldapData['email'][0] ?? $username);
+                                // Ensure it's a valid email format if it was just a username
+                                if (strpos($email, '@') === false) {
+                                    $email = $email . '@yarsi.ac.id';
+                                }
+
+                                $displayName = $ldapData['displayname'][0] ?? ($ldapData['cn'][0] ?? $ldapUid);
+                                $titleCode = strtoupper($ldapData['title'][0] ?? '');
+                                $idNik = $ldapData['description'][0] ?? null;
+                                $phone = $ldapData['telephonenumber'][0] ?? null;
+
+                                // Map role from LDAP title
+                                $role = 'dosen'; // default fallback
+                                if ($titleCode === 'M' || $titleCode === 'D') {
+                                    $role = 'dosen';
+                                } elseif ($titleCode === 'S') {
+                                    $role = 'staf';
+                                }
+
+                                // Find user in local database by email or uid to sync
+                                $user = User::where('email', $email)->orWhere('email', $username)->first();
+
+                                if (!$user) {
+                                    $user = new User();
+                                    $user->email = $email;
+                                    // Generate a random password since we NEVER save the LDAP password
+                                    $user->password = Hash::make(\Illuminate\Support\Str::random(32));
+                                }
+
+                                $user->name = $displayName;
+                                $user->nidn = $idNik ?: $user->nidn;
+                                $user->phone = $phone ?: $user->phone;
+                                $user->role = $role;
+
+                                // Generate Penta ID if it doesn't exist
+                                if (!$user->penta_id) {
+                                    $user->penta_id = $this->generatePentaId();
+                                }
+
+                                $user->save();
+
+                                \App\Models\ActivityLog::log($user->id, 'Login', 'User berhasil login ke sistem via LDAP');
+
+                                return response()->json(['user' => $user]);
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
         return response()->json(['error' => 'Invalid credentials'], 401);
     }
 
@@ -60,14 +133,14 @@ class UserController extends Controller
             // Generate a random 7-digit number
             $pentaId = str_pad(mt_rand(1, 9999999), 7, '0', STR_PAD_LEFT);
         } while (User::where('penta_id', $pentaId)->exists());
-        
+
         return $pentaId;
     }
 
     public function profile($id)
     {
         $user = User::findOrFail($id);
-        
+
         // Generate Penta ID if it doesn't exist yet (for legacy users)
         if (!$user->penta_id) {
             $user->penta_id = $this->generatePentaId();
@@ -107,7 +180,7 @@ class UserController extends Controller
                     'thumbnail' => $u->scholarData->thumbnail ?? null,
                 ];
             });
-        
+
         return response()->json(['leaderboard' => $leaderboard]);
     }
 
@@ -117,23 +190,23 @@ class UserController extends Controller
             ->whereNotNull('program_studi')
             ->where('program_studi', '!=', '')
             ->select(
-                'program_studi', 
+                'program_studi',
                 DB::raw('SUM(total_kpi_points) as total_points'),
                 DB::raw('COUNT(*) as dosen_count')
             )
             ->groupBy('program_studi')
             ->get();
-        
+
         // Add research count for each prodi
-        $data = $data->map(function($item) {
-            $researchCount = \App\Models\Penelitian::whereHas('user', function($query) use ($item) {
+        $data = $data->map(function ($item) {
+            $researchCount = \App\Models\Penelitian::whereHas('user', function ($query) use ($item) {
                 $query->where('program_studi', $item->program_studi);
             })->count();
-            
+
             $item->research_count = $researchCount;
             return $item;
         });
-        
+
         return response()->json(['data' => $data]);
     }
     public function chartFakultas()
@@ -144,7 +217,7 @@ class UserController extends Controller
             ->select('fakultas', DB::raw('SUM(total_kpi_points) as total_points'), DB::raw('COUNT(*) as dosen_count'))
             ->groupBy('fakultas')
             ->get();
-        
+
         return response()->json(['data' => $data]);
     }
 
@@ -153,12 +226,12 @@ class UserController extends Controller
         $totalUsers = User::count();
         $totalDosen = User::where('role', 'dosen')->count();
         $totalPoints = User::sum('total_kpi_points');
-        
+
         $totalDocs = \App\Models\Document::count();
         $approvedDocs = \App\Models\Document::where('status', 'Approved')->count();
 
         $totalCitations = \App\Models\ScholarData::sum('total_citations') + \App\Models\ScopusData::sum('total_citations');
-        
+
         $topProdi = User::where('role', 'dosen')
             ->whereNotNull('program_studi')
             ->select('program_studi', DB::raw('SUM(total_kpi_points) as total_points'), DB::raw('COUNT(*) as count'))

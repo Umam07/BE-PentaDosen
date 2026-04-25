@@ -13,7 +13,6 @@ use App\Http\Controllers\ActivityLogController;
 
 // Auth Routes with strict rate limit
 Route::middleware(['throttle:auth'])->group(function () {
-    Route::post('/register', [UserController::class, 'register']);
     Route::post('/login', [UserController::class, 'login']);
 });
 

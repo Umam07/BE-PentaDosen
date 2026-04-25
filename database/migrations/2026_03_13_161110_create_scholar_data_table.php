@@ -14,6 +14,7 @@ return new class extends Migration
         Schema::create('scholar_data', function (Blueprint $table) {
             $table->id();
             $table->foreignId('user_id')->constrained()->onDelete('cascade');
+            $table->text('thumbnail')->nullable();
             $table->integer('total_citations')->default(0);
             $table->integer('h_index')->default(0);
             $table->integer('i10_index')->default(0);

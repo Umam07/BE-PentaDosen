@@ -17,6 +17,9 @@ return new class extends Migration
             $table->string('title');
             $table->string('category');
             $table->string('file_url');
+            $table->date('published_at')->nullable();
+            $table->boolean('is_kpi_counted')->default(false);
+            $table->string('accreditation_period')->nullable();
             $table->string('status')->default('Pending');
             $table->integer('awarded_points')->default(0);
             $table->timestamps();

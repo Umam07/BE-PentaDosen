@@ -41,7 +41,7 @@ class DatabaseSeeder extends Seeder
         );
         User::updateOrCreate(
             ['email' => 'umam@univ.edu'],
-            ['name' => "Muhammad Syafi'ul Umam", 'role' => 'dosen', 'scholar_id' => 'tBjAaI0AAAAJ&hl', 'scopus_id' => '57220091394', 'fakultas' => 'Fakultas Psikologi', 'program_studi' => 'Psikologi', 'password' => bcrypt('password')]
+            ['name' => "Umamz", 'role' => 'dosen', 'scholar_id' => 'tBjAaI0AAAAJ&hl', 'scopus_id' => '57220091394', 'fakultas' => 'Fakultas Psikologi', 'program_studi' => 'Psikologi', 'password' => bcrypt('password')]
         );
 
         // Administration & Leadership

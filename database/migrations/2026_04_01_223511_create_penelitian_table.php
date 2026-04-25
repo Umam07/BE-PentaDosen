@@ -19,6 +19,7 @@ return new class extends Migration
             $table->string('program'); // hibah dikti, hibah internal, hibah luar negeri
             $table->string('skema'); // kompetisi, pembinaan
             $table->string('fokus'); // kesehatan, ekonomi
+            $table->integer('tahun')->nullable();
             $table->string('file_url');
             $table->string('status')->default('Pending');
             $table->double('awarded_points', 8, 2)->default(0);
