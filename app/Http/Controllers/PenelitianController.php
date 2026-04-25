@@ -43,6 +43,8 @@ class PenelitianController extends Controller
         // Clear cache
         Cache::tags(['penelitian'])->flush();
 
+        \App\Models\ActivityLog::log($request->user_id, 'Submit Research', 'User mengajukan hasil penelitian: ' . $request->judul_penelitian);
+
         return response()->json([
             'success' => true,
             'message' => 'Penelitian berhasil diunggah. Menunggu verifikasi admin.',

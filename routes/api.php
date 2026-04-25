@@ -14,6 +14,7 @@ use App\Http\Controllers\ActivityLogController;
 // Auth Routes with strict rate limit
 Route::middleware(['throttle:auth'])->group(function () {
     Route::post('/login', [UserController::class, 'login']);
+    Route::post('/logout', [UserController::class, 'logout']);
 });
 
 // General API Routes with global rate limit
@@ -42,6 +43,7 @@ Route::middleware(['throttle:api'])->group(function () {
     Route::post('/penelitian/{id}/verify', [PenelitianController::class, 'verify']);
     
     Route::get('/admin/activity-logs', [ActivityLogController::class, 'index']);
+    Route::post('/admin/activity-logs', [ActivityLogController::class, 'store']);
     
     Route::get('/leaderboard', [UserController::class, 'leaderboard']);
     Route::get('/charts/prodi', [UserController::class, 'chartProdi']);

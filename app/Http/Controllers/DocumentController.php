@@ -114,7 +114,16 @@ class DocumentController extends Controller
             return $doc;
         });
 
-        \App\Models\ActivityLog::log($request->user_id, 'Upload Document', 'User mengunggah dokumen: ' . $request->title);
+        $actionName = 'Submit Document';
+        if (str_contains(strtolower($request->category), 'jurnal')) {
+            $actionName = 'Submit Journal';
+        } elseif (str_contains(strtolower($request->category), 'hki')) {
+            $actionName = 'Submit HKI';
+        } elseif (str_contains(strtolower($request->category), 'buku')) {
+            $actionName = 'Submit Book';
+        }
+
+        \App\Models\ActivityLog::log($request->user_id, $actionName, 'User mengajukan ' . $request->category . ': ' . $request->title);
 
         return response()->json([
             'success' => true,

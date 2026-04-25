@@ -160,6 +160,8 @@ class ScopusController extends Controller
             }
         });
 
+        \App\Models\ActivityLog::log($user->id, 'Sync Scopus', 'User melakukan sinkronisasi data Scopus');
+
         return response()->json(['success' => true, 'message' => 'Scopus Data synced successfully']);
     }
 

@@ -127,6 +127,15 @@ class UserController extends Controller
         return response()->json(['error' => 'Invalid credentials'], 401);
     }
 
+    public function logout(Request $request)
+    {
+        $userId = $request->user_id;
+        if ($userId) {
+            \App\Models\ActivityLog::log($userId, 'Logout', 'User keluar dari sistem');
+        }
+        return response()->json(['success' => true]);
+    }
+
     private function generatePentaId()
     {
         do {
@@ -177,7 +186,7 @@ class UserController extends Controller
                     'h_index' => $u->scholarData->h_index ?? 0,
                     'scopus_total_citations' => $u->scopusData->total_citations ?? 0,
                     'scopus_h_index' => $u->scopusData->h_index ?? 0,
-                    'thumbnail' => $u->scholarData->thumbnail ?? null,
+                    'thumbnail' => $u->avatar ?? ($u->scholarData->thumbnail ?? null),
                 ];
             });
 

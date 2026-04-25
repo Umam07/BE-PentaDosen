@@ -70,6 +70,11 @@ class ScholarController extends Controller
                 ]
             );
 
+            // Update user avatar
+            if ($thumbnail) {
+                $user->update(['avatar' => $thumbnail]);
+            }
+
             // Get weight for Jurnal Nasional as default for Scholar
             $weight = \App\Models\PointWeight::where('category', 'Jurnal Nasional')->first();
             $awardedPoints = $weight ? $weight->weight_value : 20;
@@ -124,6 +129,8 @@ class ScholarController extends Controller
                 }
             }
         });
+        
+        \App\Models\ActivityLog::log($user->id, 'Sync Scholar', 'User melakukan sinkronisasi data Google Scholar');
 
         return response()->json(['success' => true, 'message' => 'Data synced successfully']);
     }
@@ -131,7 +138,10 @@ class ScholarController extends Controller
     public function updateScholarId(Request $request, $id)
     {
         $user = User::findOrFail($id);
-        $user->update(['scholar_id' => $request->scholar_id]);
+        $user->update([
+            'scholar_id' => $request->scholar_id,
+            'avatar' => $request->avatar ?? $user->avatar
+        ]);
 
         return response()->json(['success' => true]);
     }

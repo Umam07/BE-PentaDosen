@@ -31,6 +31,7 @@ class User extends Authenticatable
         'total_kpi_points',
         'program_studi',
         'fakultas',
+        'avatar',
     ];
 
     public function scholarData()
