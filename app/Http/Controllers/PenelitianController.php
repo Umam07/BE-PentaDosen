@@ -8,6 +8,7 @@ use App\Models\User;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Cache;
+use Illuminate\Validation\Rule;
 
 class PenelitianController extends Controller
 {
@@ -15,7 +16,13 @@ class PenelitianController extends Controller
     {
         $request->validate([
             'user_id' => 'required|exists:users,id',
-            'judul_penelitian' => 'required|string|unique:penelitian,judul_penelitian',
+            'judul_penelitian' => [
+                'required',
+                'string',
+                Rule::unique('penelitian')->where(function ($query) use ($request) {
+                    return $query->where('user_id', $request->user_id);
+                })
+            ],
             'dana_disetujui' => 'required|numeric',
             'program' => 'required|in:hibah dikti,hibah internal,hibah luar negeri',
             'skema' => 'required|in:kompetisi,pembinaan',
