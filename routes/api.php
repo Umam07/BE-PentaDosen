@@ -29,6 +29,7 @@ Route::middleware(['throttle:api'])->group(function () {
     Route::get('/scopus/check/{scopus_id}', [ScopusController::class, 'checkId']);
     
     Route::post('/documents', [DocumentController::class, 'upload']);
+    Route::post('/documents/{id}/upload-pdf', [DocumentController::class, 'uploadPdf']);
     Route::get('/users/{id}/documents', [DocumentController::class, 'getUserDocuments']);
     
     Route::get('/admin/documents', [AdminController::class, 'getPendingDocuments']);

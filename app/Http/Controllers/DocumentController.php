@@ -27,11 +27,28 @@ class DocumentController extends Controller
             'category' => 'required',
             'published_at' => 'required|date',
             'doc_type' => 'required|in:kpi,arsip',
-            'file' => 'required|file|mimes:pdf,jpg,jpeg,png|max:10240',
+            'file' => 'nullable|file|mimes:pdf,jpg,jpeg,png|max:10240',
         ]);
 
-        $path = $request->file('file')->store('uploads', 'public');
-        $fileUrl = Storage::url($path);
+        // Duplicate check
+        $existingDuplicate = Document::where('user_id', $request->user_id)
+            ->where('title', $request->title)
+            ->first();
+
+        if ($existingDuplicate && $existingDuplicate->file_url !== '') {
+            return response()->json([
+                'message' => 'The given data was invalid.',
+                'errors' => [
+                    'title' => ['Dokumen dengan judul ini sudah terdaftar di sistem.']
+                ]
+            ], 422);
+        }
+
+        $fileUrl = '-';
+        if ($request->hasFile('file')) {
+            $path = $request->file('file')->store('uploads', 'public');
+            $fileUrl = Storage::url($path);
+        }
 
         $publishedAt = Carbon::parse($request->published_at);
         $docType = $request->doc_type;
@@ -155,6 +172,27 @@ class DocumentController extends Controller
                 'start' => $this->kpiPeriodStart,
                 'end' => $this->kpiPeriodEnd,
             ],
+        ]);
+    }
+
+    public function uploadPdf(Request $request, $id)
+    {
+        $request->validate([
+            'file' => 'required|file|mimes:pdf,jpg,jpeg,png|max:10240',
+        ]);
+
+        $doc = Document::findOrFail($id);
+
+        $path = $request->file('file')->store('uploads', 'public');
+        $fileUrl = Storage::url($path);
+
+        $doc->file_url = $fileUrl;
+        $doc->save();
+
+        return response()->json([
+            'success' => true,
+            'message' => 'File berhasil diunggah.',
+            'document' => $doc,
         ]);
     }
 }
