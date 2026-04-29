@@ -46,7 +46,11 @@ class PenelitianController extends Controller
         ]);
 
         // Clear cache
-        Cache::tags(['penelitian'])->flush();
+        if (Cache::supportsTags()) {
+            Cache::tags(['penelitian'])->flush();
+        } else {
+            Cache::flush();
+        }
 
         \App\Models\ActivityLog::log($request->user_id, 'Submit Research', 'User mengajukan hasil penelitian: ' . $request->judul_penelitian);
 
@@ -63,7 +67,7 @@ class PenelitianController extends Controller
         $role = $request->query('role');
         $cacheKey = "penelitian_index_{$userId}_{$role}";
 
-        $penelitian = Cache::tags(['penelitian'])->remember($cacheKey, 3600, function () use ($userId, $role) {
+        $fetchData = function () use ($userId, $role) {
             if ($role === 'admin lppm') {
                 return Penelitian::whereIn('status', ['Pending', 'Verified by Prodi'])
                     ->with('user')
@@ -84,7 +88,13 @@ class PenelitianController extends Controller
                 // Dosen sees their own research regardless of status
                 return Penelitian::where('user_id', $userId)->orderBy('created_at', 'desc')->get();
             }
-        });
+        };
+
+        if (Cache::supportsTags()) {
+            $penelitian = Cache::tags(['penelitian'])->remember($cacheKey, 3600, $fetchData);
+        } else {
+            $penelitian = Cache::remember($cacheKey, 3600, $fetchData);
+        }
 
         return response()->json([
             'success' => true,
@@ -147,7 +157,11 @@ class PenelitianController extends Controller
         }
 
         // Clear cache
-        Cache::tags(['penelitian'])->flush();
+        if (Cache::supportsTags()) {
+            Cache::tags(['penelitian'])->flush();
+        } else {
+            Cache::flush();
+        }
 
         if ($request->admin_id) {
             \App\Models\ActivityLog::log($request->admin_id, 'Verifikasi Penelitian', "Mengubah status penelitian '{$penelitian->judul_penelitian}' menjadi {$request->status}");
@@ -174,7 +188,11 @@ class PenelitianController extends Controller
         $penelitian->file_url = $fileUrl;
         $penelitian->save();
 
-        Cache::tags(['penelitian'])->flush();
+        if (Cache::supportsTags()) {
+            Cache::tags(['penelitian'])->flush();
+        } else {
+            Cache::flush();
+        }
 
         return response()->json([
             'success' => true,
