@@ -15,17 +15,22 @@ class PenelitianController extends Controller
     {
         $request->validate([
             'user_id' => 'required|exists:users,id',
-            'judul_penelitian' => 'required|string',
+            'judul_penelitian' => 'required|string|unique:penelitian,judul_penelitian',
             'dana_disetujui' => 'required|numeric',
             'program' => 'required|in:hibah dikti,hibah internal,hibah luar negeri',
             'skema' => 'required|in:kompetisi,pembinaan',
             'fokus' => 'required|in:kesehatan,ekonomi',
             'tahun' => 'required|integer',
-            'file' => 'required|file|mimes:pdf|max:10240',
+            'file' => 'nullable|file|mimes:pdf|max:10240',
+        ], [
+            'judul_penelitian.unique' => 'Penelitian dengan judul ini sudah terdaftar di sistem.'
         ]);
 
-        $path = $request->file('file')->store('penelitian', 'public');
-        $fileUrl = Storage::url($path);
+        $fileUrl = '-';
+        if ($request->hasFile('file')) {
+            $path = $request->file('file')->store('penelitian', 'public');
+            $fileUrl = Storage::url($path);
+        }
 
         $penelitian = Penelitian::create([
             'user_id' => $request->user_id,
@@ -151,6 +156,29 @@ class PenelitianController extends Controller
         return response()->json([
             'success' => true,
             'message' => 'Penelitian berhasil ' . ($request->status === 'Approved' ? 'disetujui/diverifikasi' : 'ditolak') . '.',
+            'penelitian' => $penelitian,
+        ]);
+    }
+
+    public function uploadPdf(Request $request, $id)
+    {
+        $request->validate([
+            'file' => 'required|file|mimes:pdf|max:10240',
+        ]);
+
+        $penelitian = Penelitian::findOrFail($id);
+
+        $path = $request->file('file')->store('penelitian', 'public');
+        $fileUrl = Storage::url($path);
+
+        $penelitian->file_url = $fileUrl;
+        $penelitian->save();
+
+        Cache::tags(['penelitian'])->flush();
+
+        return response()->json([
+            'success' => true,
+            'message' => 'File PDF berhasil diunggah.',
             'penelitian' => $penelitian,
         ]);
     }

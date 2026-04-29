@@ -41,6 +41,7 @@ Route::middleware(['throttle:api'])->group(function () {
     Route::post('/penelitian', [PenelitianController::class, 'store']);
     Route::get('/penelitian', [PenelitianController::class, 'index']);
     Route::post('/penelitian/{id}/verify', [PenelitianController::class, 'verify']);
+    Route::post('/penelitian/{id}/upload-pdf', [PenelitianController::class, 'uploadPdf']);
     
     Route::get('/admin/activity-logs', [ActivityLogController::class, 'index']);
     Route::post('/admin/activity-logs', [ActivityLogController::class, 'store']);
