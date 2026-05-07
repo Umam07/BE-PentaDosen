@@ -168,7 +168,29 @@ class ScopusController extends Controller
     public function updateScopusId(Request $request, $id)
     {
         $user = User::findOrFail($id);
-        $user->update(['scopus_id' => $request->scopus_id]);
+        $newScopusId = $request->scopus_id;
+
+        DB::transaction(function () use ($user, $newScopusId) {
+            $user->update(['scopus_id' => $newScopusId]);
+
+            // If ID is being deleted (set to null), clear associated cached data
+            if (is_null($newScopusId)) {
+                \App\Models\ScopusData::where('user_id', $user->id)->delete();
+                \App\Models\ScopusPublication::where('user_id', $user->id)->delete();
+                
+                // Also remove auto-synced documents from Scopus to keep points accurate
+                \App\Models\Document::where('user_id', $user->id)
+                    ->where('category', 'Jurnal Internasional')
+                    ->where('file_url', '')
+                    ->delete();
+                
+                // Recalculate total kpi points
+                $totalPoints = \App\Models\Document::where('user_id', $user->id)
+                    ->where('status', 'Approved')
+                    ->sum('awarded_points');
+                $user->update(['total_kpi_points' => $totalPoints]);
+            }
+        });
 
         return response()->json(['success' => true]);
     }

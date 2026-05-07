@@ -156,10 +156,21 @@ class UserController extends Controller
             $user->save();
         }
 
-        $scholarData = ScholarData::where('user_id', $user->id)->first();
-        $scopusData = \App\Models\ScopusData::where('user_id', $user->id)->first();
-        $publications = ScholarPublication::where('user_id', $user->id)->orderBy('year', 'desc')->get();
-        $scopusPublications = \App\Models\ScopusPublication::where('user_id', $user->id)->orderBy('year', 'desc')->get();
+        // Only fetch Scholar data if user has a Scholar ID
+        $scholarData = null;
+        $publications = [];
+        if ($user->scholar_id) {
+            $scholarData = ScholarData::where('user_id', $user->id)->first();
+            $publications = ScholarPublication::where('user_id', $user->id)->orderBy('year', 'desc')->get();
+        }
+
+        // Only fetch Scopus data if user has a Scopus ID
+        $scopusData = null;
+        $scopusPublications = [];
+        if ($user->scopus_id) {
+            $scopusData = \App\Models\ScopusData::where('user_id', $user->id)->first();
+            $scopusPublications = \App\Models\ScopusPublication::where('user_id', $user->id)->orderBy('year', 'desc')->get();
+        }
 
         return response()->json([
             'user' => $user,

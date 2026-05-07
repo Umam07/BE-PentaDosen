@@ -138,10 +138,32 @@ class ScholarController extends Controller
     public function updateScholarId(Request $request, $id)
     {
         $user = User::findOrFail($id);
-        $user->update([
-            'scholar_id' => $request->scholar_id,
-            'avatar' => $request->avatar ?? $user->avatar
-        ]);
+        $newScholarId = $request->scholar_id;
+
+        DB::transaction(function () use ($user, $newScholarId, $request) {
+            $user->update([
+                'scholar_id' => $newScholarId,
+                'avatar' => $request->avatar ?? ($newScholarId ? $user->avatar : null)
+            ]);
+
+            // If ID is being deleted (set to null), clear associated cached data
+            if (is_null($newScholarId)) {
+                ScholarData::where('user_id', $user->id)->delete();
+                ScholarPublication::where('user_id', $user->id)->delete();
+                
+                // Also remove auto-synced documents from Scholar to keep points accurate
+                \App\Models\Document::where('user_id', $user->id)
+                    ->where('category', 'Jurnal Nasional')
+                    ->where('file_url', '')
+                    ->delete();
+                
+                // Recalculate total kpi points (optional but recommended if points are stored in user table)
+                $totalPoints = \App\Models\Document::where('user_id', $user->id)
+                    ->where('status', 'Approved')
+                    ->sum('awarded_points');
+                $user->update(['total_kpi_points' => $totalPoints]);
+            }
+        });
 
         return response()->json(['success' => true]);
     }
