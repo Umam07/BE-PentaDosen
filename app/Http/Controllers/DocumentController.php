@@ -52,6 +52,7 @@ class DocumentController extends Controller
 
         $publishedAt = Carbon::parse($request->published_at);
         $docType = $request->doc_type;
+        $requestedStatus = $request->status; // Status sent by admin
 
         // Determine KPI status
         $isKpi = false;
@@ -69,7 +70,12 @@ class DocumentController extends Controller
         $autoVerified = false;
         $awardedPoints = 0;
 
-        if ($isKpi) {
+        // If status is sent as Approved (Admin upload), set it
+        if ($requestedStatus === 'Approved') {
+            $autoVerified = true;
+            $weight = PointWeight::where('category', $request->category)->first();
+            $awardedPoints = $weight ? $weight->weight_value : 0;
+        } elseif ($isKpi) {
             $titleNormalized = strtolower(trim($request->title));
 
             // Check Google Scholar publications

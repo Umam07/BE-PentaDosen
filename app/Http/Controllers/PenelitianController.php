@@ -39,6 +39,22 @@ class PenelitianController extends Controller
             $fileUrl = Storage::url($path);
         }
 
+        // Calculate points if status is Approved (Admin input)
+        $status = $request->status ?: 'Pending';
+        $awardedPoints = 0;
+
+        if ($status === 'Approved') {
+            if ($request->program === 'hibah luar negeri') {
+                $awardedPoints += 60;
+            } elseif ($request->program === 'hibah dikti') {
+                $awardedPoints += 50;
+            } elseif ($request->program === 'hibah internal') {
+                $awardedPoints += 40;
+            }
+            $jutaRupiah = $request->dana_disetujui / 1000000;
+            $awardedPoints += $jutaRupiah * 0.05;
+        }
+
         $penelitian = Penelitian::create([
             'user_id' => $request->user_id,
             'judul_penelitian' => $request->judul_penelitian,
@@ -48,9 +64,16 @@ class PenelitianController extends Controller
             'fokus' => $request->fokus,
             'tahun' => $request->tahun,
             'file_url' => $fileUrl,
-            'status' => 'Pending',
-            'awarded_points' => 0,
+            'status' => $status,
+            'awarded_points' => $awardedPoints,
         ]);
+
+        if ($status === 'Approved' && $awardedPoints > 0) {
+            $user = User::find($request->user_id);
+            if ($user) {
+                $user->increment('total_kpi_points', $awardedPoints);
+            }
+        }
 
         // Clear cache
         if (Cache::supportsTags()) {
