@@ -160,8 +160,11 @@ class DocumentController extends Controller
 
     public function getUserDocuments($id)
     {
-        $docs = Document::where('user_id', $id)->orderBy('created_at', 'desc')->get();
-        return response()->json(['documents' => $docs]);
+        $documents = Document::with('penelitian')->where('user_id', $id)->orderBy('published_at', 'desc')->get();
+        return response()->json([
+            'success' => true,
+            'documents' => $documents,
+        ]);
     }
 
     public function getWeights()
@@ -199,6 +202,36 @@ class DocumentController extends Controller
             'success' => true,
             'message' => 'File berhasil diunggah.',
             'document' => $doc,
+        ]);
+    }
+
+    public function linkToPenelitian(Request $request, $id)
+    {
+        $request->validate([
+            'penelitian_id' => 'required|exists:penelitian,id'
+        ]);
+
+        $doc = Document::findOrFail($id);
+        $doc->penelitian_id = $request->penelitian_id;
+        $doc->save();
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Dokumen berhasil dihubungkan ke penelitian.',
+            'document' => $doc->load('penelitian')
+        ]);
+    }
+
+    public function getApprovedPenelitian($userId)
+    {
+        $penelitian = \App\Models\Penelitian::where('user_id', $userId)
+            ->where('status', 'Approved')
+            ->orderBy('tahun', 'desc')
+            ->get();
+
+        return response()->json([
+            'success' => true,
+            'penelitian' => $penelitian
         ]);
     }
 }

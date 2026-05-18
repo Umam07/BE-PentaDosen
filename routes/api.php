@@ -30,7 +30,9 @@ Route::middleware(['throttle:api'])->group(function () {
     
     Route::post('/documents', [DocumentController::class, 'upload']);
     Route::post('/documents/{id}/upload-pdf', [DocumentController::class, 'uploadPdf']);
+    Route::post('/documents/{id}/link-penelitian', [DocumentController::class, 'linkToPenelitian']);
     Route::get('/users/{id}/documents', [DocumentController::class, 'getUserDocuments']);
+    Route::get('/users/{id}/approved-penelitian', [DocumentController::class, 'getApprovedPenelitian']);
     
     Route::get('/admin/documents', [AdminController::class, 'getPendingDocuments']);
     Route::get('/admin/documents/all', [AdminController::class, 'getAllDocuments']);

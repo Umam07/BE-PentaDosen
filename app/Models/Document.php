@@ -8,6 +8,7 @@ class Document extends Model
 {
     protected $fillable = [
         'user_id',
+        'penelitian_id',
         'title',
         'category',
         'file_url',
@@ -26,5 +27,10 @@ class Document extends Model
     public function user()
     {
         return $this->belongsTo(User::class);
+    }
+
+    public function penelitian()
+    {
+        return $this->belongsTo(Penelitian::class);
     }
 }
