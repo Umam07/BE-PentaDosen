@@ -17,6 +17,7 @@ class Document extends Model
         'accreditation_period',
         'status',
         'awarded_points',
+        'catatan',
     ];
 
     protected $casts = [

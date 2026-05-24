@@ -10,13 +10,14 @@ use App\Models\ScholarPublication;
 use App\Models\ScopusPublication;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Cache;
 use Carbon\Carbon;
 
 class DocumentController extends Controller
 {
     // KPI Active period
     private $kpiPeriodStart = '2025-01-01';
-    private $kpiPeriodEnd   = '2027-12-31';
+    private $kpiPeriodEnd = '2027-12-31';
     private $kpiPeriodLabel = '2025-2027';
 
     public function upload(Request $request)
@@ -96,7 +97,7 @@ class DocumentController extends Controller
         }
 
         $doc = DB::transaction(function () use ($request, $fileUrl, $publishedAt, $isKpi, $accreditationPeriod, $autoVerified, $awardedPoints) {
-            
+
             // Check for existing auto-synced document without file
             $existingDoc = Document::where('user_id', $request->user_id)
                 ->where('title', $request->title)
@@ -148,6 +149,14 @@ class DocumentController extends Controller
 
         \App\Models\ActivityLog::log($request->user_id, $actionName, 'User mengajukan ' . $request->category . ': ' . $request->title);
 
+        // Clear cache
+        if (Cache::supportsTags()) {
+            Cache::tags(["user_documents_{$request->user_id}", 'documents', 'admin_documents', 'stats'])->flush();
+        } else {
+            Cache::forget("user_documents_{$request->user_id}");
+            Cache::flush();
+        }
+
         return response()->json([
             'success' => true,
             'docId' => $doc->id,
@@ -160,7 +169,17 @@ class DocumentController extends Controller
 
     public function getUserDocuments($id)
     {
-        $documents = Document::with('penelitian')->where('user_id', $id)->orderBy('published_at', 'desc')->get();
+        $cacheKey = "user_documents_{$id}";
+        $fetchData = function () use ($id) {
+            return Document::with('penelitian')->where('user_id', $id)->orderBy('published_at', 'desc')->get();
+        };
+
+        if (Cache::supportsTags()) {
+            $documents = Cache::tags(['documents', "user_documents_{$id}"])->remember($cacheKey, 3600, $fetchData);
+        } else {
+            $documents = Cache::remember($cacheKey, 3600, $fetchData);
+        }
+
         return response()->json([
             'success' => true,
             'documents' => $documents,
@@ -198,6 +217,14 @@ class DocumentController extends Controller
         $doc->file_url = $fileUrl;
         $doc->save();
 
+        // Clear cache
+        if (Cache::supportsTags()) {
+            Cache::tags(["user_documents_{$doc->user_id}", 'documents', 'admin_documents'])->flush();
+        } else {
+            Cache::forget("user_documents_{$doc->user_id}");
+            Cache::flush();
+        }
+
         return response()->json([
             'success' => true,
             'message' => 'File berhasil diunggah.',
@@ -214,6 +241,14 @@ class DocumentController extends Controller
         $doc = Document::findOrFail($id);
         $doc->penelitian_id = $request->penelitian_id;
         $doc->save();
+
+        // Clear cache
+        if (Cache::supportsTags()) {
+            Cache::tags(["user_documents_{$doc->user_id}", 'documents', 'admin_documents'])->flush();
+        } else {
+            Cache::forget("user_documents_{$doc->user_id}");
+            Cache::flush();
+        }
 
         return response()->json([
             'success' => true,

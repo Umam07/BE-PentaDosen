@@ -9,6 +9,7 @@ use App\Models\ScholarData;
 use App\Models\ScholarPublication;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Cache;
 
 class UserController extends Controller
 {
@@ -183,23 +184,32 @@ class UserController extends Controller
 
     public function leaderboard()
     {
-        $leaderboard = User::with(['scholarData', 'scopusData'])
-            ->where('role', 'dosen')
-            ->orderBy('total_kpi_points', 'desc')
-            ->get()
-            ->map(function ($u) {
-                return [
-                    'id' => $u->id,
-                    'name' => $u->name,
-                    'program_studi' => $u->program_studi,
-                    'total_kpi_points' => $u->total_kpi_points,
-                    'total_citations' => $u->scholarData->total_citations ?? 0,
-                    'h_index' => $u->scholarData->h_index ?? 0,
-                    'scopus_total_citations' => $u->scopusData->total_citations ?? 0,
-                    'scopus_h_index' => $u->scopusData->h_index ?? 0,
-                    'thumbnail' => $u->avatar ?? ($u->scholarData->thumbnail ?? null),
-                ];
-            });
+        $cacheKey = 'leaderboard_data';
+        $fetchData = function () {
+            return User::with(['scholarData', 'scopusData'])
+                ->where('role', 'dosen')
+                ->orderBy('total_kpi_points', 'desc')
+                ->get()
+                ->map(function ($u) {
+                    return [
+                        'id' => $u->id,
+                        'name' => $u->name,
+                        'program_studi' => $u->program_studi,
+                        'total_kpi_points' => $u->total_kpi_points,
+                        'total_citations' => $u->scholarData->total_citations ?? 0,
+                        'h_index' => $u->scholarData->h_index ?? 0,
+                        'scopus_total_citations' => $u->scopusData->total_citations ?? 0,
+                        'scopus_h_index' => $u->scopusData->h_index ?? 0,
+                        'thumbnail' => $u->avatar ?? ($u->scholarData->thumbnail ?? null),
+                    ];
+                });
+        };
+
+        if (Cache::supportsTags()) {
+            $leaderboard = Cache::tags(['leaderboard'])->remember($cacheKey, 3600, $fetchData);
+        } else {
+            $leaderboard = Cache::remember($cacheKey, 3600, $fetchData);
+        }
 
         return response()->json(['leaderboard' => $leaderboard]);
     }
@@ -243,65 +253,76 @@ class UserController extends Controller
 
     public function getStats()
     {
-        $totalUsers = User::count();
-        $totalDosen = User::where('role', 'dosen')->count();
-        $totalPoints = User::sum('total_kpi_points');
+        $cacheKey = 'dashboard_stats';
+        $fetchData = function () {
+            $totalUsers = User::count();
+            $totalDosen = User::where('role', 'dosen')->count();
+            $totalPoints = User::sum('total_kpi_points');
 
-        $totalDocs = \App\Models\Document::count();
-        $approvedDocs = \App\Models\Document::where('status', 'Approved')->count();
+            $totalDocs = \App\Models\Document::count();
+            $approvedDocs = \App\Models\Document::where('status', 'Approved')->count();
 
-        $totalCitations = \App\Models\ScholarData::sum('total_citations') + \App\Models\ScopusData::sum('total_citations');
+            $totalCitations = \App\Models\ScholarData::sum('total_citations') + \App\Models\ScopusData::sum('total_citations');
 
-        $topProdi = User::where('role', 'dosen')
-            ->whereNotNull('program_studi')
-            ->select('program_studi', DB::raw('SUM(total_kpi_points) as total_points'), DB::raw('COUNT(*) as count'))
-            ->groupBy('program_studi')
-            ->orderBy('total_points', 'desc')
-            ->first();
+            $topProdi = User::where('role', 'dosen')
+                ->whereNotNull('program_studi')
+                ->select('program_studi', DB::raw('SUM(total_kpi_points) as total_points'), DB::raw('COUNT(*) as count'))
+                ->groupBy('program_studi')
+                ->orderBy('total_points', 'desc')
+                ->first();
 
-        // Count unique prodi
-        $totalProdi = User::where('role', 'dosen')
-            ->whereNotNull('program_studi')
-            ->where('program_studi', '!=', '')
-            ->distinct('program_studi')
-            ->count('program_studi');
+            // Count unique prodi
+            $totalProdi = User::where('role', 'dosen')
+                ->whereNotNull('program_studi')
+                ->where('program_studi', '!=', '')
+                ->distinct('program_studi')
+                ->count('program_studi');
 
-        // Top Performer
-        $topPerformer = User::where('role', 'dosen')
-            ->orderBy('total_kpi_points', 'desc')
-            ->first(['name', 'total_kpi_points']);
+            // Top Performer
+            $topPerformer = User::where('role', 'dosen')
+                ->orderBy('total_kpi_points', 'desc')
+                ->first(['name', 'total_kpi_points']);
 
-        // KPI Score 3 Years (Current year and 2 previous years)
-        $currentYear = now()->year;
-        $threeYearsAgo = $currentYear - 2;
-        $kpiScore3Years = \App\Models\Document::where('status', 'Approved')
-            ->whereYear('published_at', '>=', $threeYearsAgo)
-            ->sum('awarded_points');
+            // KPI Score 3 Years (Current year and 2 previous years)
+            $currentYear = now()->year;
+            $threeYearsAgo = $currentYear - 2;
+            $kpiScore3Years = \App\Models\Document::where('status', 'Approved')
+                ->whereYear('published_at', '>=', $threeYearsAgo)
+                ->sum('awarded_points');
 
-        // KPI Score This Year
-        $kpiScoreThisYear = \App\Models\Document::where('status', 'Approved')
-            ->whereYear('published_at', $currentYear)
-            ->sum('awarded_points');
+            // KPI Score This Year
+            $kpiScoreThisYear = \App\Models\Document::where('status', 'Approved')
+                ->whereYear('published_at', $currentYear)
+                ->sum('awarded_points');
 
-        $totalScholar = \App\Models\ScholarPublication::count();
-        $totalScopus = \App\Models\ScopusPublication::count();
-        $totalResearch = \App\Models\Penelitian::count();
+            $totalScholar = \App\Models\ScholarPublication::count();
+            $totalScopus = \App\Models\ScopusPublication::count();
+            $totalResearch = \App\Models\Penelitian::count();
 
-        return response()->json([
-            'total_users' => $totalUsers,
-            'total_dosen' => $totalDosen,
-            'total_prodi' => $totalProdi,
-            'total_points' => $totalPoints,
-            'total_docs' => $totalDocs,
-            'approved_docs' => $approvedDocs,
-            'total_citations' => $totalCitations,
-            'top_prodi' => $topProdi,
-            'top_performer' => $topPerformer,
-            'kpi_score_3_years' => $kpiScore3Years,
-            'kpi_score_this_year' => $kpiScoreThisYear,
-            'total_scholar' => $totalScholar,
-            'total_scopus' => $totalScopus,
-            'total_research' => $totalResearch,
-        ]);
+            return [
+                'total_users' => $totalUsers,
+                'total_dosen' => $totalDosen,
+                'total_prodi' => $totalProdi,
+                'total_points' => $totalPoints,
+                'total_docs' => $totalDocs,
+                'approved_docs' => $approvedDocs,
+                'total_citations' => $totalCitations,
+                'top_prodi' => $topProdi,
+                'top_performer' => $topPerformer,
+                'kpi_score_3_years' => $kpiScore3Years,
+                'kpi_score_this_year' => $kpiScoreThisYear,
+                'total_scholar' => $totalScholar,
+                'total_scopus' => $totalScopus,
+                'total_research' => $totalResearch,
+            ];
+        };
+
+        if (Cache::supportsTags()) {
+            $stats = Cache::tags(['stats'])->remember($cacheKey, 3600, $fetchData);
+        } else {
+            $stats = Cache::remember($cacheKey, 3600, $fetchData);
+        }
+
+        return response()->json($stats);
     }
 }

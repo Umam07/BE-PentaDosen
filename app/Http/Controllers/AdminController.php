@@ -8,6 +8,7 @@ use App\Models\Document;
 use App\Models\User;
 use App\Models\PointWeight;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Cache;
 
 class AdminController extends Controller
 {
@@ -15,29 +16,38 @@ class AdminController extends Controller
     {
         $role = $request->query('role');
         $userId = $request->query('user_id');
+        $cacheKey = "admin_pending_documents_{$role}_{$userId}";
 
-        $query = Document::with('user');
+        $fetchData = function () use ($role, $userId) {
+            $query = Document::with('user');
 
-        if ($role === 'admin prodi') {
-            $query->where('status', 'Pending');
-            $admin = User::find($userId);
-            if ($admin && $admin->program_studi) {
-                $query->whereHas('user', function ($q) use ($admin) {
-                    $q->where('program_studi', $admin->program_studi);
-                });
+            if ($role === 'admin prodi') {
+                $query->where('status', 'Pending');
+                $admin = User::find($userId);
+                if ($admin && $admin->program_studi) {
+                    $query->whereHas('user', function ($q) use ($admin) {
+                        $q->where('program_studi', $admin->program_studi);
+                    });
+                }
+            } elseif ($role === 'admin lppm') {
+                $query->whereIn('status', ['Pending', 'Verified by Prodi']);
+            } else {
+                // Default behavior if role is unknown or not provided
+                $query->where('status', 'Pending');
             }
-        } elseif ($role === 'admin lppm') {
-            $query->whereIn('status', ['Pending', 'Verified by Prodi']);
-        } else {
-            // Default behavior if role is unknown or not provided
-            $query->where('status', 'Pending');
-        }
 
-        $docs = $query->orderBy('created_at', 'asc')
-            ->get()
-            ->map(function ($doc) {
-                return array_merge($doc->toArray(), ['user_name' => $doc->user->name, 'fakultas' => $doc->user->fakultas]);
-            });
+            return $query->orderBy('created_at', 'asc')
+                ->get()
+                ->map(function ($doc) {
+                    return array_merge($doc->toArray(), ['user_name' => $doc->user->name, 'fakultas' => $doc->user->fakultas]);
+                });
+        };
+
+        if (Cache::supportsTags()) {
+            $docs = Cache::tags(['admin_documents', 'documents'])->remember($cacheKey, 3600, $fetchData);
+        } else {
+            $docs = Cache::remember($cacheKey, 3600, $fetchData);
+        }
 
         return response()->json(['documents' => $docs]);
     }
@@ -46,23 +56,32 @@ class AdminController extends Controller
     {
         $role = $request->query('role');
         $userId = $request->query('user_id');
+        $cacheKey = "admin_all_documents_{$role}_{$userId}";
 
-        $query = Document::with('user');
+        $fetchData = function () use ($role, $userId) {
+            $query = Document::with('user');
 
-        if ($role === 'admin prodi') {
-            $admin = User::find($userId);
-            if ($admin && $admin->program_studi) {
-                $query->whereHas('user', function ($q) use ($admin) {
-                    $q->where('program_studi', $admin->program_studi);
-                });
+            if ($role === 'admin prodi') {
+                $admin = User::find($userId);
+                if ($admin && $admin->program_studi) {
+                    $query->whereHas('user', function ($q) use ($admin) {
+                        $q->where('program_studi', $admin->program_studi);
+                    });
+                }
             }
-        }
 
-        $docs = $query->orderBy('created_at', 'desc')
-            ->get()
-            ->map(function ($doc) {
-                return array_merge($doc->toArray(), ['user_name' => $doc->user->name, 'fakultas' => $doc->user->fakultas]);
-            });
+            return $query->orderBy('created_at', 'desc')
+                ->get()
+                ->map(function ($doc) {
+                    return array_merge($doc->toArray(), ['user_name' => $doc->user->name, 'fakultas' => $doc->user->fakultas]);
+                });
+        };
+
+        if (Cache::supportsTags()) {
+            $docs = Cache::tags(['admin_documents', 'documents'])->remember($cacheKey, 3600, $fetchData);
+        } else {
+            $docs = Cache::remember($cacheKey, 3600, $fetchData);
+        }
 
         return response()->json(['documents' => $docs]);
     }
@@ -71,40 +90,49 @@ class AdminController extends Controller
     {
         $role = $request->query('role');
         $userId = $request->query('user_id');
+        $cacheKey = "admin_all_lecturers_{$role}_{$userId}";
 
-        $query = User::with(['scholarData', 'scopusData'])
-            ->where('role', 'dosen');
+        $fetchData = function () use ($role, $userId) {
+            $query = User::with(['scholarData', 'scopusData'])
+                ->where('role', 'dosen');
 
-        if ($role === 'admin prodi') {
-            $admin = User::find($userId);
-            if ($admin && $admin->program_studi) {
-                $query->where('program_studi', $admin->program_studi);
+            if ($role === 'admin prodi') {
+                $admin = User::find($userId);
+                if ($admin && $admin->program_studi) {
+                    $query->where('program_studi', $admin->program_studi);
+                }
             }
-        }
 
-        $lecturers = $query->orderBy('name', 'asc')
-            ->get()
-            ->map(function ($u) {
-                return [
-                    'id' => $u->id,
-                    'name' => $u->name,
-                    'email' => $u->email,
-                    'fakultas' => $u->fakultas,
-                    'program_studi' => $u->program_studi,
-                    'scholar_id' => $u->scholar_id,
-                    'scopus_id' => $u->scopus_id,
-                    'total_kpi_points' => $u->total_kpi_points,
-                    'total_citations' => $u->scholarData->total_citations ?? 0,
-                    'h_index' => $u->scholarData->h_index ?? 0,
-                    'i10_index' => $u->scholarData->i10_index ?? 0,
-                    'last_synced' => $u->scholarData->last_synced ?? null,
-                    'thumbnail' => $u->scholarData->thumbnail ?? null,
-                    'scopus_total_citations' => $u->scopusData->total_citations ?? 0,
-                    'scopus_h_index' => $u->scopusData->h_index ?? 0,
-                    'scopus_document_count' => $u->scopusData->document_count ?? 0,
-                    'scopus_last_synced' => $u->scopusData->last_synced ?? null,
-                ];
-            });
+            return $query->orderBy('name', 'asc')
+                ->get()
+                ->map(function ($u) {
+                    return [
+                        'id' => $u->id,
+                        'name' => $u->name,
+                        'email' => $u->email,
+                        'fakultas' => $u->fakultas,
+                        'program_studi' => $u->program_studi,
+                        'scholar_id' => $u->scholar_id,
+                        'scopus_id' => $u->scopus_id,
+                        'total_kpi_points' => $u->total_kpi_points,
+                        'total_citations' => $u->scholarData->total_citations ?? 0,
+                        'h_index' => $u->scholarData->h_index ?? 0,
+                        'i10_index' => $u->scholarData->i10_index ?? 0,
+                        'last_synced' => $u->scholarData->last_synced ?? null,
+                        'thumbnail' => $u->scholarData->thumbnail ?? null,
+                        'scopus_total_citations' => $u->scopusData->total_citations ?? 0,
+                        'scopus_h_index' => $u->scopusData->h_index ?? 0,
+                        'scopus_document_count' => $u->scopusData->document_count ?? 0,
+                        'scopus_last_synced' => $u->scopusData->last_synced ?? null,
+                    ];
+                });
+        };
+
+        if (Cache::supportsTags()) {
+            $lecturers = Cache::tags(['lecturers'])->remember($cacheKey, 3600, $fetchData);
+        } else {
+            $lecturers = Cache::remember($cacheKey, 3600, $fetchData);
+        }
 
         return response()->json(['lecturers' => $lecturers]);
     }
@@ -119,6 +147,15 @@ class AdminController extends Controller
             if ($role === 'admin prodi') {
                 // If prodi approves, move to next stage
                 $doc->update(['status' => 'Verified by Prodi']);
+
+                // Clear cache on stage movement
+                if (Cache::supportsTags()) {
+                    Cache::tags(["user_documents_{$doc->user_id}", 'documents', 'admin_documents'])->flush();
+                } else {
+                    Cache::forget("user_documents_{$doc->user_id}");
+                    Cache::flush();
+                }
+
                 return response()->json(['success' => true, 'message' => 'Document verified by prodi. Waiting for admin approval.']);
             }
 
@@ -140,7 +177,18 @@ class AdminController extends Controller
             });
         } else {
             // Either admin prodi or admin lppm can reject
-            $doc->update(['status' => $status]);
+            $doc->update([
+                'status' => $status,
+                'catatan' => $request->catatan ?? null
+            ]);
+        }
+
+        // Clear cache
+        if (Cache::supportsTags()) {
+            Cache::tags(["user_documents_{$doc->user_id}", 'documents', 'admin_documents', 'lecturers', 'stats', 'leaderboard'])->flush();
+        } else {
+            Cache::forget("user_documents_{$doc->user_id}");
+            Cache::flush();
         }
 
         if ($request->admin_id) {
@@ -167,6 +215,13 @@ class AdminController extends Controller
             }
         });
 
+        // Clear caches
+        if (Cache::supportsTags()) {
+            Cache::tags(['lecturers', 'stats', 'leaderboard'])->flush();
+        } else {
+            Cache::flush();
+        }
+
         return response()->json(['success' => true]);
     }
 
@@ -186,6 +241,13 @@ class AdminController extends Controller
                 }
             }
         });
+
+        // Clear caches
+        if (Cache::supportsTags()) {
+            Cache::tags(['lecturers', 'stats', 'leaderboard'])->flush();
+        } else {
+            Cache::flush();
+        }
 
         return response()->json(['success' => true]);
     }

@@ -95,25 +95,29 @@ class PenelitianController extends Controller
     {
         $userId = $request->query('user_id');
         $role = $request->query('role');
-        $cacheKey = "penelitian_index_{$userId}_{$role}";
+        $all = $request->query('all');
+        $cacheKey = "penelitian_index_{$userId}_{$role}_{$all}";
 
-        $fetchData = function () use ($userId, $role) {
+        $fetchData = function () use ($userId, $role, $all) {
             if ($role === 'admin lppm') {
-                return Penelitian::whereIn('status', ['Pending', 'Verified by Prodi'])
-                    ->with('user')
-                    ->orderBy('created_at', 'desc')
-                    ->get();
+                $query = Penelitian::with('user');
+                if ($all !== 'true') {
+                    $query->whereIn('status', ['Pending', 'Verified by Prodi']);
+                }
+                return $query->orderBy('created_at', 'desc')->get();
             } elseif ($role === 'admin prodi') {
-                 $admin = User::find($userId);
-                 if ($admin && $admin->program_studi) {
-                     // Prodi sees pending research from their own department
-                     return Penelitian::where('status', 'Pending')
-                         ->whereHas('user', function($q) use ($admin) {
-                             $q->where('program_studi', $admin->program_studi);
-                         })->with('user')->orderBy('created_at', 'desc')->get();
-                 } else {
-                     return [];
-                 }
+                  $admin = User::find($userId);
+                  if ($admin && $admin->program_studi) {
+                      $query = Penelitian::whereHas('user', function($q) use ($admin) {
+                          $q->where('program_studi', $admin->program_studi);
+                      });
+                      if ($all !== 'true') {
+                          $query->where('status', 'Pending');
+                      }
+                      return $query->with('user')->orderBy('created_at', 'desc')->get();
+                  } else {
+                      return [];
+                  }
             } else {
                 // Dosen sees their own research regardless of status
                 return Penelitian::where('user_id', $userId)->orderBy('created_at', 'desc')->get();
@@ -136,7 +140,8 @@ class PenelitianController extends Controller
     {
         $request->validate([
             'status' => 'required|in:Approved,Rejected',
-            'role' => 'nullable|string'
+            'role' => 'nullable|string',
+            'catatan' => 'nullable|string'
         ]);
 
         $penelitian = Penelitian::findOrFail($id);
@@ -183,6 +188,7 @@ class PenelitianController extends Controller
         } else {
             // Rejection
             $penelitian->status = 'Rejected';
+            $penelitian->catatan = $request->catatan;
             $penelitian->save();
         }
 

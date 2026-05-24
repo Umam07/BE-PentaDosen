@@ -19,9 +19,9 @@ class AppServiceProvider extends ServiceProvider
      */
     public function boot(): void
     {
-        // Global API Rate Limiter (60 requests per minute)
+        // Global API Rate Limiter (180 requests per minute)
         \Illuminate\Support\Facades\RateLimiter::for('api', function (\Illuminate\Http\Request $request) {
-            return \Illuminate\Cache\RateLimiting\Limit::perMinute(60)->by($request->user()?->id ?: $request->ip());
+            return \Illuminate\Cache\RateLimiting\Limit::perMinute(180)->by($request->user()?->id ?: $request->ip());
         });
 
         // Authentication Rate Limiter (Total 5 attempts per minute for ALL users combined)

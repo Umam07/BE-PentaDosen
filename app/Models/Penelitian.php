@@ -19,6 +19,7 @@ class Penelitian extends Model
         'file_url',
         'status',
         'awarded_points',
+        'catatan',
     ];
 
     public function user()

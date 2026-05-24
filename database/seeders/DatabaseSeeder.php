@@ -53,11 +53,6 @@ class DatabaseSeeder extends Seeder
             ['email' => 'prodi@univ.edu'],
             ['name' => 'Admin Prodi TI', 'role' => 'admin prodi', 'fakultas' => 'Fakultas Teknologi Informasi', 'program_studi' => 'Teknik Informatika', 'password' => bcrypt('password')]
         );
-        User::updateOrCreate(
-            ['email' => 'rektor@univ.edu'],
-            ['name' => 'Rektor', 'role' => 'pimpinan', 'password' => bcrypt('password')]
-        );
-
         // Scholar data will be synced via real API instead of initialized with dummy data
     }
 }
