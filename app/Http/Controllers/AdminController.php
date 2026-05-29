@@ -7,6 +7,7 @@ use Illuminate\Http\Request;
 use App\Models\Document;
 use App\Models\User;
 use App\Models\PointWeight;
+use App\Models\Notification;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Cache;
 
@@ -193,6 +194,50 @@ class AdminController extends Controller
 
         if ($request->admin_id) {
             \App\Models\ActivityLog::log($request->admin_id, 'Verifikasi Dokumen', "Mengubah status dokumen '{$doc->title}' menjadi {$status}");
+        }
+
+        // === NOTIFICATIONS ===
+        $docTitle = $doc->title;
+        $docOwnerUserId = $doc->user_id;
+
+        if ($status === 'Approved' && $role === 'admin prodi') {
+            // Admin Prodi approved → notify dosen: verified by prodi, waiting LPPM
+            Notification::send(
+                $docOwnerUserId,
+                'doc_verified_prodi',
+                'Dokumen Diverifikasi Prodi',
+                "Dokumen '{$docTitle}' telah diverifikasi oleh Admin Prodi. Menunggu persetujuan LPPM.",
+                ['doc_id' => $doc->id]
+            );
+            // Notify Admin LPPM: document ready for their review
+            $adminLppmList = User::where('role', 'admin lppm')->get();
+            foreach ($adminLppmList as $adminLppm) {
+                Notification::send(
+                    $adminLppm->id,
+                    'doc_pending_lppm',
+                    'Dokumen Siap Ditinjau LPPM',
+                    "Dokumen '{$docTitle}' telah diverifikasi Prodi dan menunggu persetujuan LPPM.",
+                    ['doc_id' => $doc->id]
+                );
+            }
+        } elseif ($status === 'Approved' && $role !== 'admin prodi') {
+            // Final Approval by LPPM → notify dosen
+            Notification::send(
+                $docOwnerUserId,
+                'doc_approved',
+                'Dokumen Disetujui ✓',
+                "Selamat! Dokumen '{$docTitle}' telah disetujui dan poin sudah ditambahkan ke akun Anda.",
+                ['doc_id' => $doc->id]
+            );
+        } elseif ($status === 'Rejected') {
+            $catatan = $request->catatan ? " Catatan: {$request->catatan}" : '';
+            Notification::send(
+                $docOwnerUserId,
+                'doc_rejected',
+                'Dokumen Ditolak',
+                "Dokumen '{$docTitle}' ditolak oleh admin.{$catatan} Silakan perbaiki dan ajukan ulang.",
+                ['doc_id' => $doc->id]
+            );
         }
 
         return response()->json(['success' => true]);

@@ -5,6 +5,7 @@ namespace App\Http\Controllers;
 use Illuminate\Http\Request;
 use App\Models\Penelitian;
 use App\Models\User;
+use App\Models\Notification;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Cache;
@@ -83,6 +84,38 @@ class PenelitianController extends Controller
         }
 
         \App\Models\ActivityLog::log($request->user_id, 'Submit Research', 'User mengajukan hasil penelitian: ' . $request->judul_penelitian);
+
+        // === NOTIFICATIONS ===
+        // Notify Admin Prodi & Admin LPPM about new research submission
+        if ($status === 'Pending') {
+            $dosen = User::find($request->user_id);
+            $dosenName = $dosen ? $dosen->name : 'Dosen';
+            $dosenProdi = $dosen ? $dosen->program_studi : null;
+
+            $adminProdiList = User::where('role', 'admin prodi')
+                ->when($dosenProdi, fn($q) => $q->where('program_studi', $dosenProdi))
+                ->get();
+            foreach ($adminProdiList as $adminProdi) {
+                Notification::send(
+                    $adminProdi->id,
+                    'penelitian_submitted',
+                    'Penelitian Baru Masuk',
+                    "Dosen {$dosenName} mengajukan penelitian baru: '{$request->judul_penelitian}'.",
+                    ['penelitian_id' => $penelitian->id]
+                );
+            }
+
+            $adminLppmList = User::where('role', 'admin lppm')->get();
+            foreach ($adminLppmList as $adminLppm) {
+                Notification::send(
+                    $adminLppm->id,
+                    'penelitian_submitted',
+                    'Penelitian Baru Masuk',
+                    "Dosen {$dosenName} mengajukan penelitian baru: '{$request->judul_penelitian}'.",
+                    ['penelitian_id' => $penelitian->id]
+                );
+            }
+        }
 
         return response()->json([
             'success' => true,
@@ -201,6 +234,50 @@ class PenelitianController extends Controller
 
         if ($request->admin_id) {
             \App\Models\ActivityLog::log($request->admin_id, 'Verifikasi Penelitian', "Mengubah status penelitian '{$penelitian->judul_penelitian}' menjadi {$request->status}");
+        }
+
+        // === NOTIFICATIONS ===
+        $judulPenelitian = $penelitian->judul_penelitian;
+        $dosenUserId = $penelitian->user_id;
+
+        if ($request->status === 'Approved' && $role === 'admin prodi') {
+            // Notify dosen: verified by prodi
+            Notification::send(
+                $dosenUserId,
+                'penelitian_verified_prodi',
+                'Penelitian Diverifikasi Prodi',
+                "Penelitian '{$judulPenelitian}' telah diverifikasi Prodi. Menunggu persetujuan LPPM.",
+                ['penelitian_id' => $penelitian->id]
+            );
+            // Notify Admin LPPM
+            $adminLppmList = User::where('role', 'admin lppm')->get();
+            foreach ($adminLppmList as $adminLppm) {
+                Notification::send(
+                    $adminLppm->id,
+                    'penelitian_pending_lppm',
+                    'Penelitian Siap Ditinjau LPPM',
+                    "Penelitian '{$judulPenelitian}' telah diverifikasi Prodi dan siap untuk ditinjau LPPM.",
+                    ['penelitian_id' => $penelitian->id]
+                );
+            }
+        } elseif ($request->status === 'Approved' && $role !== 'admin prodi') {
+            // Final approval by LPPM
+            Notification::send(
+                $dosenUserId,
+                'penelitian_approved',
+                'Penelitian Disetujui ✓',
+                "Selamat! Penelitian '{$judulPenelitian}' telah disetujui dan poin sudah ditambahkan ke akun Anda.",
+                ['penelitian_id' => $penelitian->id]
+            );
+        } elseif ($request->status === 'Rejected') {
+            $catatan = $request->catatan ? " Catatan: {$request->catatan}" : '';
+            Notification::send(
+                $dosenUserId,
+                'penelitian_rejected',
+                'Penelitian Ditolak',
+                "Penelitian '{$judulPenelitian}' ditolak oleh admin.{$catatan} Silakan perbaiki dan ajukan ulang.",
+                ['penelitian_id' => $penelitian->id]
+            );
         }
 
         return response()->json([

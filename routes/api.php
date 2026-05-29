@@ -10,6 +10,7 @@ use App\Http\Controllers\AdminController;
 use App\Http\Controllers\ScopusController;
 use App\Http\Controllers\PenelitianController;
 use App\Http\Controllers\ActivityLogController;
+use App\Http\Controllers\NotificationController;
 
 // Auth Routes with strict rate limit
 Route::middleware(['throttle:auth'])->group(function () {
@@ -48,6 +49,13 @@ Route::middleware(['throttle:api'])->group(function () {
     
     Route::get('/admin/activity-logs', [ActivityLogController::class, 'index']);
     Route::post('/admin/activity-logs', [ActivityLogController::class, 'store']);
+
+    // Notification Routes
+    Route::get('/notifications/{userId}', [NotificationController::class, 'index']);
+    Route::post('/notifications/{id}/read', [NotificationController::class, 'markRead']);
+    Route::post('/notifications/{userId}/read-all', [NotificationController::class, 'markAllRead']);
+    Route::delete('/notifications/{id}', [NotificationController::class, 'destroy']);
+    Route::delete('/notifications/{userId}/clear-all', [NotificationController::class, 'clearAll']);
     
     Route::get('/leaderboard', [UserController::class, 'leaderboard']);
     Route::get('/charts/prodi', [UserController::class, 'chartProdi']);

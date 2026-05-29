@@ -8,6 +8,8 @@ use App\Models\Document;
 use App\Models\PointWeight;
 use App\Models\ScholarPublication;
 use App\Models\ScopusPublication;
+use App\Models\Notification;
+use App\Models\User;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Cache;
@@ -148,6 +150,40 @@ class DocumentController extends Controller
         }
 
         \App\Models\ActivityLog::log($request->user_id, $actionName, 'User mengajukan ' . $request->category . ': ' . $request->title);
+
+        // === NOTIFICATIONS ===
+        // Notify admin prodi & admin lppm about new document submission
+        if (!$autoVerified) {
+            $dosen = User::find($request->user_id);
+            $dosenName = $dosen ? $dosen->name : 'Dosen';
+            $dosenProdi = $dosen ? $dosen->program_studi : null;
+
+            // Notify Admin Prodi of the same program_studi
+            $adminProdiList = User::where('role', 'admin prodi')
+                ->when($dosenProdi, fn($q) => $q->where('program_studi', $dosenProdi))
+                ->get();
+            foreach ($adminProdiList as $adminProdi) {
+                Notification::send(
+                    $adminProdi->id,
+                    'doc_submitted',
+                    'Dokumen Baru Masuk',
+                    "Dosen {$dosenName} mengajukan dokumen baru: '{$request->title}' ({$request->category}).",
+                    ['doc_id' => $doc->id, 'user_id' => $request->user_id]
+                );
+            }
+
+            // Notify Admin LPPM
+            $adminLppmList = User::where('role', 'admin lppm')->get();
+            foreach ($adminLppmList as $adminLppm) {
+                Notification::send(
+                    $adminLppm->id,
+                    'doc_submitted',
+                    'Dokumen Baru Masuk',
+                    "Dosen {$dosenName} mengajukan dokumen baru: '{$request->title}' ({$request->category}).",
+                    ['doc_id' => $doc->id, 'user_id' => $request->user_id]
+                );
+            }
+        }
 
         // Clear cache
         if (Cache::supportsTags()) {
