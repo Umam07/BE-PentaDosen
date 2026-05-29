@@ -248,6 +248,16 @@ class UserController extends Controller
             ->groupBy('fakultas')
             ->get();
 
+        // Add research count for each fakultas
+        $data = $data->map(function ($item) {
+            $researchCount = \App\Models\Penelitian::whereHas('user', function ($query) use ($item) {
+                $query->where('fakultas', $item->fakultas);
+            })->count();
+
+            $item->research_count = $researchCount;
+            return $item;
+        });
+
         return response()->json(['data' => $data]);
     }
 

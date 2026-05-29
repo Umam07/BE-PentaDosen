@@ -22,16 +22,16 @@ class AdminController extends Controller
         $fetchData = function () use ($role, $userId) {
             $query = Document::with('user');
 
-            if ($role === 'admin prodi') {
+            if ($role === 'admin fakultas') {
                 $query->where('status', 'Pending');
                 $admin = User::find($userId);
-                if ($admin && $admin->program_studi) {
+                if ($admin && $admin->fakultas) {
                     $query->whereHas('user', function ($q) use ($admin) {
-                        $q->where('program_studi', $admin->program_studi);
+                        $q->where('fakultas', $admin->fakultas);
                     });
                 }
             } elseif ($role === 'admin lppm') {
-                $query->whereIn('status', ['Pending', 'Verified by Prodi']);
+                $query->whereIn('status', ['Pending', 'Verified by Fakultas']);
             } else {
                 // Default behavior if role is unknown or not provided
                 $query->where('status', 'Pending');
@@ -62,11 +62,11 @@ class AdminController extends Controller
         $fetchData = function () use ($role, $userId) {
             $query = Document::with('user');
 
-            if ($role === 'admin prodi') {
+            if ($role === 'admin fakultas') {
                 $admin = User::find($userId);
-                if ($admin && $admin->program_studi) {
+                if ($admin && $admin->fakultas) {
                     $query->whereHas('user', function ($q) use ($admin) {
-                        $q->where('program_studi', $admin->program_studi);
+                        $q->where('fakultas', $admin->fakultas);
                     });
                 }
             }
@@ -97,10 +97,10 @@ class AdminController extends Controller
             $query = User::with(['scholarData', 'scopusData'])
                 ->where('role', 'dosen');
 
-            if ($role === 'admin prodi') {
+            if ($role === 'admin fakultas') {
                 $admin = User::find($userId);
-                if ($admin && $admin->program_studi) {
-                    $query->where('program_studi', $admin->program_studi);
+                if ($admin && $admin->fakultas) {
+                    $query->where('fakultas', $admin->fakultas);
                 }
             }
 
@@ -141,13 +141,13 @@ class AdminController extends Controller
     public function verifyDocument(Request $request, $id)
     {
         $status = $request->status; // 'Approved' or 'Rejected'
-        $role = $request->role; // 'admin lppm' or 'admin prodi'
+        $role = $request->role; // 'admin lppm' or 'admin fakultas'
         $doc = Document::findOrFail($id);
 
         if ($status === 'Approved') {
-            if ($role === 'admin prodi') {
-                // If prodi approves, move to next stage
-                $doc->update(['status' => 'Verified by Prodi']);
+            if ($role === 'admin fakultas') {
+                // If fakultas approves, move to next stage
+                $doc->update(['status' => 'Verified by Fakultas']);
 
                 // Clear cache on stage movement
                 if (Cache::supportsTags()) {
@@ -157,7 +157,7 @@ class AdminController extends Controller
                     Cache::flush();
                 }
 
-                return response()->json(['success' => true, 'message' => 'Document verified by prodi. Waiting for admin approval.']);
+                return response()->json(['success' => true, 'message' => 'Document verified by fakultas. Waiting for admin approval.']);
             }
 
             // Final Admin approval logic
@@ -177,7 +177,7 @@ class AdminController extends Controller
                 }
             });
         } else {
-            // Either admin prodi or admin lppm can reject
+            // Either admin fakultas or admin lppm can reject
             $doc->update([
                 'status' => $status,
                 'catatan' => $request->catatan ?? null
@@ -200,13 +200,13 @@ class AdminController extends Controller
         $docTitle = $doc->title;
         $docOwnerUserId = $doc->user_id;
 
-        if ($status === 'Approved' && $role === 'admin prodi') {
-            // Admin Prodi approved → notify dosen: verified by prodi, waiting LPPM
+        if ($status === 'Approved' && $role === 'admin fakultas') {
+            // Admin Fakultas approved → notify dosen: verified by fakultas, waiting LPPM
             Notification::send(
                 $docOwnerUserId,
-                'doc_verified_prodi',
-                'Dokumen Diverifikasi Prodi',
-                "Dokumen '{$docTitle}' telah diverifikasi oleh Admin Prodi. Menunggu persetujuan LPPM.",
+                'doc_verified_fakultas',
+                'Dokumen Diverifikasi Fakultas',
+                "Dokumen '{$docTitle}' telah diverifikasi oleh Admin Fakultas. Menunggu persetujuan LPPM.",
                 ['doc_id' => $doc->id]
             );
             // Notify Admin LPPM: document ready for their review
@@ -216,11 +216,11 @@ class AdminController extends Controller
                     $adminLppm->id,
                     'doc_pending_lppm',
                     'Dokumen Siap Ditinjau LPPM',
-                    "Dokumen '{$docTitle}' telah diverifikasi Prodi dan menunggu persetujuan LPPM.",
+                    "Dokumen '{$docTitle}' telah diverifikasi Fakultas dan menunggu persetujuan LPPM.",
                     ['doc_id' => $doc->id]
                 );
             }
-        } elseif ($status === 'Approved' && $role !== 'admin prodi') {
+        } elseif ($status === 'Approved' && $role !== 'admin fakultas') {
             // Final Approval by LPPM → notify dosen
             Notification::send(
                 $docOwnerUserId,

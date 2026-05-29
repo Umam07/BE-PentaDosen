@@ -86,18 +86,18 @@ class PenelitianController extends Controller
         \App\Models\ActivityLog::log($request->user_id, 'Submit Research', 'User mengajukan hasil penelitian: ' . $request->judul_penelitian);
 
         // === NOTIFICATIONS ===
-        // Notify Admin Prodi & Admin LPPM about new research submission
+        // Notify Admin Fakultas & Admin LPPM about new research submission
         if ($status === 'Pending') {
             $dosen = User::find($request->user_id);
             $dosenName = $dosen ? $dosen->name : 'Dosen';
-            $dosenProdi = $dosen ? $dosen->program_studi : null;
+            $dosenFakultas = $dosen ? $dosen->fakultas : null;
 
-            $adminProdiList = User::where('role', 'admin prodi')
-                ->when($dosenProdi, fn($q) => $q->where('program_studi', $dosenProdi))
+            $adminFakultasList = User::where('role', 'admin fakultas')
+                ->when($dosenFakultas, fn($q) => $q->where('fakultas', $dosenFakultas))
                 ->get();
-            foreach ($adminProdiList as $adminProdi) {
+            foreach ($adminFakultasList as $adminFakultas) {
                 Notification::send(
-                    $adminProdi->id,
+                    $adminFakultas->id,
                     'penelitian_submitted',
                     'Penelitian Baru Masuk',
                     "Dosen {$dosenName} mengajukan penelitian baru: '{$request->judul_penelitian}'.",
@@ -135,14 +135,14 @@ class PenelitianController extends Controller
             if ($role === 'admin lppm') {
                 $query = Penelitian::with('user');
                 if ($all !== 'true') {
-                    $query->whereIn('status', ['Pending', 'Verified by Prodi']);
+                    $query->whereIn('status', ['Pending', 'Verified by Fakultas']);
                 }
                 return $query->orderBy('created_at', 'desc')->get();
-            } elseif ($role === 'admin prodi') {
+            } elseif ($role === 'admin fakultas') {
                   $admin = User::find($userId);
-                  if ($admin && $admin->program_studi) {
+                  if ($admin && $admin->fakultas) {
                       $query = Penelitian::whereHas('user', function($q) use ($admin) {
-                          $q->where('program_studi', $admin->program_studi);
+                          $q->where('fakultas', $admin->fakultas);
                       });
                       if ($all !== 'true') {
                           $query->where('status', 'Pending');
@@ -181,18 +181,18 @@ class PenelitianController extends Controller
         $role = $request->role;
         
         if ($request->status === 'Approved') {
-            if ($role === 'admin prodi') {
+            if ($role === 'admin fakultas') {
                 if ($penelitian->status !== 'Pending') {
-                    return response()->json(['success' => false, 'message' => 'Penelitian sudah diverifikasi prodi atau tahap admin.'], 400);
+                    return response()->json(['success' => false, 'message' => 'Penelitian sudah diverifikasi fakultas atau tahap admin.'], 400);
                 }
-                $penelitian->status = 'Verified by Prodi';
+                $penelitian->status = 'Verified by Fakultas';
                 $penelitian->save();
-                return response()->json(['success' => true, 'message' => 'Penelitian diverifikasi prodi. Menunggu persetujuan LPPM/Admin.']);
+                return response()->json(['success' => true, 'message' => 'Penelitian diverifikasi fakultas. Menunggu persetujuan LPPM/Admin.']);
             }
 
             // Admin Approval Logic
-            if ($role !== 'admin lppm' && $penelitian->status !== 'Verified by Prodi') {
-                return response()->json(['success' => false, 'message' => 'Penelitian harus diverifikasi prodi terlebih dahulu.'], 400);
+            if ($role !== 'admin lppm' && $penelitian->status !== 'Verified by Fakultas') {
+                return response()->json(['success' => false, 'message' => 'Penelitian harus diverifikasi fakultas terlebih dahulu.'], 400);
             }
 
             $penelitian->status = 'Approved';
@@ -240,13 +240,13 @@ class PenelitianController extends Controller
         $judulPenelitian = $penelitian->judul_penelitian;
         $dosenUserId = $penelitian->user_id;
 
-        if ($request->status === 'Approved' && $role === 'admin prodi') {
-            // Notify dosen: verified by prodi
+        if ($request->status === 'Approved' && $role === 'admin fakultas') {
+            // Notify dosen: verified by fakultas
             Notification::send(
                 $dosenUserId,
-                'penelitian_verified_prodi',
-                'Penelitian Diverifikasi Prodi',
-                "Penelitian '{$judulPenelitian}' telah diverifikasi Prodi. Menunggu persetujuan LPPM.",
+                'penelitian_verified_fakultas',
+                'Penelitian Diverifikasi Fakultas',
+                "Penelitian '{$judulPenelitian}' telah diverifikasi Fakultas. Menunggu persetujuan LPPM.",
                 ['penelitian_id' => $penelitian->id]
             );
             // Notify Admin LPPM
@@ -256,11 +256,11 @@ class PenelitianController extends Controller
                     $adminLppm->id,
                     'penelitian_pending_lppm',
                     'Penelitian Siap Ditinjau LPPM',
-                    "Penelitian '{$judulPenelitian}' telah diverifikasi Prodi dan siap untuk ditinjau LPPM.",
+                    "Penelitian '{$judulPenelitian}' telah diverifikasi Fakultas dan siap untuk ditinjau LPPM.",
                     ['penelitian_id' => $penelitian->id]
                 );
             }
-        } elseif ($request->status === 'Approved' && $role !== 'admin prodi') {
+        } elseif ($request->status === 'Approved' && $role !== 'admin fakultas') {
             // Final approval by LPPM
             Notification::send(
                 $dosenUserId,

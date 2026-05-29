@@ -152,19 +152,19 @@ class DocumentController extends Controller
         \App\Models\ActivityLog::log($request->user_id, $actionName, 'User mengajukan ' . $request->category . ': ' . $request->title);
 
         // === NOTIFICATIONS ===
-        // Notify admin prodi & admin lppm about new document submission
+        // Notify admin fakultas & admin lppm about new document submission
         if (!$autoVerified) {
             $dosen = User::find($request->user_id);
             $dosenName = $dosen ? $dosen->name : 'Dosen';
-            $dosenProdi = $dosen ? $dosen->program_studi : null;
+            $dosenFakultas = $dosen ? $dosen->fakultas : null;
 
-            // Notify Admin Prodi of the same program_studi
-            $adminProdiList = User::where('role', 'admin prodi')
-                ->when($dosenProdi, fn($q) => $q->where('program_studi', $dosenProdi))
+            // Notify Admin Fakultas of the same fakultas
+            $adminFakultasList = User::where('role', 'admin fakultas')
+                ->when($dosenFakultas, fn($q) => $q->where('fakultas', $dosenFakultas))
                 ->get();
-            foreach ($adminProdiList as $adminProdi) {
+            foreach ($adminFakultasList as $adminFakultas) {
                 Notification::send(
-                    $adminProdi->id,
+                    $adminFakultas->id,
                     'doc_submitted',
                     'Dokumen Baru Masuk',
                     "Dosen {$dosenName} mengajukan dokumen baru: '{$request->title}' ({$request->category}).",
