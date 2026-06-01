@@ -170,10 +170,13 @@ class ScholarController extends Controller
 
     public function checkId($scholar_id)
     {
-        return Cache::remember("scholar_check_{$scholar_id}", 86400, function() use ($scholar_id) {
+        $cached = Cache::remember("scholar_check_{$scholar_id}", 86400, function() use ($scholar_id) {
             $apiKey = config('services.serpapi.key');
             if (!$apiKey) {
-                return response()->json(['error' => 'SerpApi Key not configured'], 500);
+                return [
+                    'status' => 500,
+                    'data' => ['error' => 'SerpApi Key not configured']
+                ];
             }
 
             $response = Http::get('https://serpapi.com/search.json', [
@@ -183,26 +186,40 @@ class ScholarController extends Controller
             ]);
 
             if ($response->failed()) {
-                return response()->json(['error' => 'Failed to fetch data from SerpApi'], 500);
+                return [
+                    'status' => 500,
+                    'data' => ['error' => 'Failed to fetch data from SerpApi']
+                ];
             }
 
             $data = $response->json();
             
             if (isset($data['error'])) {
-                 return response()->json(['error' => 'Author not found'], 404);
+                 return [
+                     'status' => 404,
+                     'data' => ['error' => 'Author not found']
+                 ];
             }
 
             $author = $data['author'] ?? null;
             if (!$author) {
-                return response()->json(['error' => 'Author information not found for this ID'], 404);
+                return [
+                    'status' => 404,
+                    'data' => ['error' => 'Author information not found for this ID']
+                ];
             }
 
-            return response()->json([
-                'success' => true,
-                'name' => $author['name'] ?? 'Unknown',
-                'affiliations' => $author['affiliations'] ?? 'Unknown Affiliation',
-                'thumbnail' => $author['thumbnail'] ?? null
-            ]);
+            return [
+                'status' => 200,
+                'data' => [
+                    'success' => true,
+                    'name' => $author['name'] ?? 'Unknown',
+                    'affiliations' => $author['affiliations'] ?? 'Unknown Affiliation',
+                    'thumbnail' => $author['thumbnail'] ?? null
+                ]
+            ];
         });
+
+        return response()->json($cached['data'], $cached['status']);
     }
 }

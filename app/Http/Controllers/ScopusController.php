@@ -197,10 +197,13 @@ class ScopusController extends Controller
 
     public function checkId($scopus_id)
     {
-        return Cache::remember("scopus_check_{$scopus_id}", 86400, function() use ($scopus_id) {
+        $cached = Cache::remember("scopus_check_{$scopus_id}", 86400, function() use ($scopus_id) {
             $apiKey = config('services.scopus.key');
             if (!$apiKey) {
-                return response()->json(['error' => 'Scopus API Key not configured'], 500);
+                return [
+                    'status' => 500,
+                    'data' => ['error' => 'Scopus API Key not configured']
+                ];
             }
 
             // Test the author ID validity using Search API bypassing restrictions
@@ -213,25 +216,36 @@ class ScopusController extends Controller
             ]);
 
             if ($response->failed()) {
-                return response()->json(['error' => 'Failed to connect to Scopus'], 500);
+                return [
+                    'status' => 500,
+                    'data' => ['error' => 'Failed to connect to Scopus']
+                ];
             }
 
             $data = $response->json();
             
             // If no documents found, we can't verify the author easily through standard free API
             if (empty($data['search-results']['entry']) || !isset($data['search-results']['entry'][0]['dc:title'])) {
-                return response()->json(['error' => 'Author/Documents not found. Please ensure the author has registered documents.'], 404);
+                return [
+                    'status' => 404,
+                    'data' => ['error' => 'Author/Documents not found. Please ensure the author has registered documents.']
+                ];
             }
 
             $authorInfo = $data['search-results']['entry'][0];
             $name = $authorInfo['dc:creator'] ?? 'Scopus Author ID: ' . $scopus_id;
             $affiliation = $authorInfo['affiliation'][0]['affilname'] ?? 'Pencarian Scopus';
 
-            return response()->json([
-                'success' => true,
-                'name' => trim($name),
-                'affiliations' => is_string($affiliation) ? $affiliation : 'Scopus Author'
-            ]);
+            return [
+                'status' => 200,
+                'data' => [
+                    'success' => true,
+                    'name' => trim($name),
+                    'affiliations' => is_string($affiliation) ? $affiliation : 'Scopus Author'
+                ]
+            ];
         });
+
+        return response()->json($cached['data'], $cached['status']);
     }
 }
