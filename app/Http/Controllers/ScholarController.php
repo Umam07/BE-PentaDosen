@@ -26,7 +26,7 @@ class ScholarController extends Controller
             return response()->json(['error' => 'SerpApi Key not configured'], 500);
         }
 
-        $response = Http::get('https://serpapi.com/search.json', [
+        $response = Http::timeout(15)->get('https://serpapi.com/search.json', [
             'engine' => 'google_scholar_author',
             'author_id' => $user->scholar_id,
             'api_key' => $apiKey
@@ -137,6 +137,10 @@ class ScholarController extends Controller
 
     public function updateScholarId(Request $request, $id)
     {
+        $request->validate([
+            'scholar_id' => ['nullable', 'string', 'max:20', 'regex:/^[a-zA-Z0-9_-]+$/']
+        ]);
+        
         $user = User::findOrFail($id);
         $newScholarId = $request->scholar_id;
 
@@ -179,7 +183,7 @@ class ScholarController extends Controller
                 ];
             }
 
-            $response = Http::get('https://serpapi.com/search.json', [
+            $response = Http::timeout(15)->get('https://serpapi.com/search.json', [
                 'engine' => 'google_scholar_author',
                 'author_id' => $scholar_id,
                 'api_key' => $apiKey

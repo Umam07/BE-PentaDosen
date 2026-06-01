@@ -33,7 +33,7 @@ class ScopusController extends Controller
             $response = Http::withHeaders([
                 'X-ELS-APIKey' => $apiKey,
                 'Accept' => 'application/json'
-            ])->get("https://api.elsevier.com/content/search/scopus", [
+            ])->timeout(15)->get("https://api.elsevier.com/content/search/scopus", [
                 'query' => 'AU-ID(' . $user->scopus_id . ')',
                 'count' => $count,
                 'start' => $start
@@ -167,6 +167,10 @@ class ScopusController extends Controller
 
     public function updateScopusId(Request $request, $id)
     {
+        $request->validate([
+            'scopus_id' => 'nullable|numeric'
+        ]);
+        
         $user = User::findOrFail($id);
         $newScopusId = $request->scopus_id;
 
@@ -210,7 +214,7 @@ class ScopusController extends Controller
             $response = Http::withHeaders([
                 'X-ELS-APIKey' => $apiKey,
                 'Accept' => 'application/json'
-            ])->get("https://api.elsevier.com/content/search/scopus", [
+            ])->timeout(15)->get("https://api.elsevier.com/content/search/scopus", [
                 'query' => 'AU-ID(' . $scopus_id . ')',
                 'count' => 1
             ]);
