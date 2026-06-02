@@ -11,6 +11,7 @@ use App\Http\Controllers\ScopusController;
 use App\Http\Controllers\PenelitianController;
 use App\Http\Controllers\ActivityLogController;
 use App\Http\Controllers\NotificationController;
+use App\Http\Controllers\CmsController;
 
 // Auth Routes with strict rate limit
 Route::middleware(['throttle:auth'])->group(function () {
@@ -63,4 +64,33 @@ Route::middleware(['throttle:api'])->group(function () {
     Route::get('/weights', [DocumentController::class, 'getWeights']);
     Route::get('/accreditation-periods', [DocumentController::class, 'getAccreditationPeriodsApi']);
     Route::get('/dashboard/stats', [UserController::class, 'getStats']);
+
+    // CMS Settings & Master Data
+    Route::get('/cms/settings', [CmsController::class, 'getSettings']);
+    Route::post('/cms/settings', [CmsController::class, 'updateSettings']);
+    Route::get('/cms/weights', [CmsController::class, 'getWeights']);
+    Route::post('/cms/weights', [CmsController::class, 'updateWeights']);
+    Route::post('/cms/weights/new', [CmsController::class, 'storeWeight']);
+    Route::delete('/cms/weights/{category}', [CmsController::class, 'destroyWeight']);
+
+    // CMS Announcements
+    Route::get('/cms/announcements', [CmsController::class, 'indexAnnouncements']);
+    Route::get('/dosen/announcements', [CmsController::class, 'getActiveAnnouncements']);
+    Route::post('/cms/announcements', [CmsController::class, 'storeAnnouncement']);
+    Route::put('/cms/announcements/{id}', [CmsController::class, 'updateAnnouncement']);
+    Route::delete('/cms/announcements/{id}', [CmsController::class, 'destroyAnnouncement']);
+
+    // CMS FAQs
+    Route::get('/cms/faqs', [CmsController::class, 'indexFaqs']);
+    Route::post('/cms/faqs', [CmsController::class, 'storeFaq']);
+    Route::put('/cms/faqs/{id}', [CmsController::class, 'updateFaq']);
+    Route::delete('/cms/faqs/{id}', [CmsController::class, 'destroyFaq']);
+
+    // CMS Templates
+    Route::get('/cms/templates', [CmsController::class, 'indexTemplates']);
+    Route::post('/cms/templates/upload', [CmsController::class, 'uploadTemplate']);
+
+    // CMS User Roles & Access
+    Route::get('/admin/cms/users', [CmsController::class, 'getUsers']);
+    Route::post('/admin/cms/users/{id}/assign-role', [CmsController::class, 'assignRole']);
 });

@@ -53,6 +53,15 @@ class DatabaseSeeder extends Seeder
             ['email' => 'prodi@univ.edu'],
             ['name' => 'Admin Fakultas TI', 'role' => 'admin fakultas', 'fakultas' => 'Fakultas Teknologi Informasi', 'program_studi' => 'Teknik Informatika', 'password' => bcrypt('password')]
         );
+        User::updateOrCreate(
+            ['email' => 'superadmin@univ.edu'],
+            ['name' => 'Super Admin', 'role' => 'super admin', 'password' => bcrypt('password')]
+        );
+
+        // Seeding default system settings
+        \App\Models\SystemSetting::updateOrCreate(['key' => 'kpi_period_start'], ['value' => '2025-01-01']);
+        \App\Models\SystemSetting::updateOrCreate(['key' => 'kpi_period_end'], ['value' => '2027-12-31']);
+        \App\Models\SystemSetting::updateOrCreate(['key' => 'kpi_period_label'], ['value' => '2025-2027']);
         // Scholar data will be synced via real API instead of initialized with dummy data
     }
 }

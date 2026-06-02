@@ -17,10 +17,19 @@ use Carbon\Carbon;
 
 class DocumentController extends Controller
 {
-    // KPI Active period
-    private $kpiPeriodStart = '2025-01-01';
-    private $kpiPeriodEnd = '2027-12-31';
-    private $kpiPeriodLabel = '2025-2027';
+    // Dynamic KPI Active period helpers
+    private function getKpiPeriodStart()
+    {
+        return \App\Models\SystemSetting::getValue('kpi_period_start', '2025-01-01');
+    }
+    private function getKpiPeriodEnd()
+    {
+        return \App\Models\SystemSetting::getValue('kpi_period_end', '2027-12-31');
+    }
+    private function getKpiPeriodLabel()
+    {
+        return \App\Models\SystemSetting::getValue('kpi_period_label', '2025-2027');
+    }
 
     public function upload(Request $request)
     {
@@ -62,10 +71,10 @@ class DocumentController extends Controller
         $accreditationPeriod = null;
 
         if ($docType === 'kpi') {
-            $periodStart = Carbon::parse($this->kpiPeriodStart);
-            $periodEnd = Carbon::parse($this->kpiPeriodEnd);
+            $periodStart = Carbon::parse($this->getKpiPeriodStart());
+            $periodEnd = Carbon::parse($this->getKpiPeriodEnd());
             $isKpi = $publishedAt->between($periodStart, $periodEnd);
-            $accreditationPeriod = $this->kpiPeriodLabel;
+            $accreditationPeriod = $this->getKpiPeriodLabel();
         }
         // If docType is 'arsip', isKpi stays false, no period
 
@@ -232,9 +241,9 @@ class DocumentController extends Controller
     {
         return response()->json([
             'kpi_period' => [
-                'label' => $this->kpiPeriodLabel,
-                'start' => $this->kpiPeriodStart,
-                'end' => $this->kpiPeriodEnd,
+                'label' => $this->getKpiPeriodLabel(),
+                'start' => $this->getKpiPeriodStart(),
+                'end' => $this->getKpiPeriodEnd(),
             ],
         ]);
     }

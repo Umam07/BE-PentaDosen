@@ -47,6 +47,12 @@ class UserController extends Controller
                 ldap_set_option($ldapConn, LDAP_OPT_PROTOCOL_VERSION, 3);
                 ldap_set_option($ldapConn, LDAP_OPT_REFERRALS, 0);
 
+                // Set short timeouts so the connection fails fast if the LDAP server is unreachable
+                if (defined('LDAP_OPT_NETWORK_TIMEOUT')) {
+                    @ldap_set_option($ldapConn, LDAP_OPT_NETWORK_TIMEOUT, 2);
+                }
+                @ldap_set_option($ldapConn, LDAP_OPT_TIMEOUT, 2);
+
                 // Bind anonymously first to find the user DN
                 $ldapBind = @ldap_bind($ldapConn);
 
@@ -106,7 +112,11 @@ class UserController extends Controller
                                 $user->name = $displayName;
                                 $user->nidn = $idNik ?: $user->nidn;
                                 $user->phone = $phone ?: $user->phone;
-                                $user->role = $role;
+
+                                // Prevent LDAP from overwriting admin/super admin/reviewer roles
+                                if (!$user->exists || !in_array($user->role, ['super admin', 'admin lppm', 'admin fakultas', 'reviewer'])) {
+                                    $user->role = $role;
+                                }
 
                                 // Generate Penta ID if it doesn't exist
                                 if (!$user->penta_id) {
@@ -194,6 +204,7 @@ class UserController extends Controller
                     return [
                         'id' => $u->id,
                         'name' => $u->name,
+                        'fakultas' => $u->fakultas,
                         'program_studi' => $u->program_studi,
                         'total_kpi_points' => $u->total_kpi_points,
                         'total_citations' => $u->scholarData->total_citations ?? 0,
