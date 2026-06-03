@@ -56,7 +56,7 @@ class ScopusController extends Controller
             $totalResults = (int)($data['search-results']['opensearch:totalResults'] ?? 0);
             
             $start += $count;
-        } while ($start < $totalResults && $start < 100); // cap at 100 to prevent too many API requests
+        } while ($start < $totalResults && $start < 500); // cap at 500 to prevent too many API requests
 
         $documentCount = $totalResults;
         $citationCount = 0;
