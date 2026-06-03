@@ -135,7 +135,7 @@ class PenelitianController extends Controller
             if ($role === 'admin lppm') {
                 $query = Penelitian::with('user');
                 if ($all !== 'true') {
-                    $query->whereIn('status', ['Pending', 'Verified by Fakultas']);
+                    $query->where('status', 'Verified by Fakultas');
                 }
                 return $query->orderBy('created_at', 'desc')->get();
             } elseif ($role === 'admin fakultas') {

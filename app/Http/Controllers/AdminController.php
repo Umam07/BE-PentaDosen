@@ -31,7 +31,7 @@ class AdminController extends Controller
                     });
                 }
             } elseif ($role === 'admin lppm') {
-                $query->whereIn('status', ['Pending', 'Verified by Fakultas']);
+                $query->where('status', 'Verified by Fakultas');
             } else {
                 // Default behavior if role is unknown or not provided
                 $query->where('status', 'Pending');
