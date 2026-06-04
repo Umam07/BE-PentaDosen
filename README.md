@@ -78,7 +78,7 @@ erDiagram
 
 - **Automated Sync**: Sinkronisasi data publikasi secara otomatis menggunakan Scraper (Scholar) dan API (Scopus).
 - **KPI Calculation**: Perhitungan poin kinerja dosen secara otomatis berdasarkan kategori dokumen yang diverifikasi.
-- **Role-Based Access Control (RBAC)**: Pembatasan akses fitur berdasarkan peran user (Admin LPPM, Admin Prodi, Dosen, Pimpinan).
+- **Role-Based Access Control (RBAC)**: Pembatasan akses fitur berdasarkan peran user (Admin Penelitian, Admin Fakultas, Dosen, Pimpinan).
 - **Verification Workflow**: Alur verifikasi dokumen dari sisi admin untuk memastikan validitas data.
 
 ---
@@ -89,7 +89,8 @@ Setelah menjalankan `php artisan db:seed`, Anda dapat menggunakan akun berikut u
 
 | Role | Email | Password |
 | :--- | :--- | :--- |
-| **Admin LPPM** | `admin@univ.edu` | `password` |
+| **Admin Penelitian** | `penelitian@univ.edu` | `password` |
+| **Admin Fakultas** | `fakultas@univ.edu` | `password` |
 | **Dosen** | `umam@univ.edu` | `password` |
 | **Pimpinan** | `rektor@univ.edu` | `password` |
 

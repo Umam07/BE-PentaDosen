@@ -43,15 +43,23 @@ class DatabaseSeeder extends Seeder
             ['email' => 'umam@univ.edu'],
             ['name' => "Umamz", 'role' => 'dosen', 'scholar_id' => 'tBjAaI0AAAAJ&hl', 'scopus_id' => '57220091394', 'fakultas' => 'Fakultas Psikologi', 'program_studi' => 'Psikologi', 'password' => bcrypt('password')]
         );
+        User::updateOrCreate(
+            ['email' => 'dosen_fkg@univ.edu'],
+            ['name' => 'Dr. drg. H. Anton Rahardjo, M.Sc.PH', 'role' => 'dosen', 'scholar_id' => '', 'scopus_id' => '', 'fakultas' => 'Fakultas Kedokteran Gigi', 'program_studi' => 'Kedokteran Gigi', 'password' => bcrypt('password'), 'total_kpi_points' => 0]
+        );
 
         // Administration & Leadership
+        // Update existing old accounts if they exist to keep their database relations intact
+        User::where('email', 'admin@univ.edu')->update(['email' => 'penelitian@univ.edu', 'name' => 'Admin Penelitian']);
+        User::where('email', 'prodi@univ.edu')->update(['email' => 'fakultas@univ.edu', 'name' => 'Admin Fakultas']);
+
         User::updateOrCreate(
-            ['email' => 'admin@univ.edu'],
-            ['name' => 'Admin LPPM', 'role' => 'admin lppm', 'password' => bcrypt('password')]
+            ['email' => 'penelitian@univ.edu'],
+            ['name' => 'Admin Penelitian', 'role' => 'admin lppm', 'password' => bcrypt('password')]
         );
         User::updateOrCreate(
-            ['email' => 'prodi@univ.edu'],
-            ['name' => 'Admin Fakultas TI', 'role' => 'admin fakultas', 'fakultas' => 'Fakultas Teknologi Informasi', 'program_studi' => 'Teknik Informatika', 'password' => bcrypt('password')]
+            ['email' => 'fakultas@univ.edu'],
+            ['name' => 'Admin Fakultas', 'role' => 'admin fakultas', 'fakultas' => 'Fakultas Teknologi Informasi', 'program_studi' => 'Teknik Informatika', 'password' => bcrypt('password')]
         );
         User::updateOrCreate(
             ['email' => 'superadmin@univ.edu'],
