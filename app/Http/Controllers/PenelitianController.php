@@ -313,4 +313,128 @@ class PenelitianController extends Controller
             'penelitian' => $penelitian,
         ]);
     }
+
+    public function update(Request $request, $id)
+    {
+        $penelitian = Penelitian::findOrFail($id);
+
+        // Lock: cannot edit if already verified or approved
+        if (in_array($penelitian->status, ['Verified by Fakultas', 'Approved'])) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Penelitian yang sudah diverifikasi/disetujui tidak dapat diubah.',
+            ], 403);
+        }
+
+        $request->validate([
+            'judul_penelitian' => [
+                'required',
+                'string',
+                Rule::unique('penelitian')->where(function ($query) use ($request, $penelitian) {
+                    return $query->where('user_id', $penelitian->user_id);
+                })->ignore($penelitian->id),
+            ],
+            'dana_disetujui' => 'required|numeric',
+            'program' => 'required|in:hibah dikti,hibah internal,hibah luar negeri',
+            'skema' => 'required|in:kompetisi,pembinaan,lainnya',
+            'fokus' => 'required|in:kesehatan,ekonomi,teknologi,sosial,lainnya',
+            'tahun' => 'required|integer',
+        ], [
+            'judul_penelitian.unique' => 'Penelitian dengan judul ini sudah terdaftar di sistem.',
+        ]);
+
+        $wasRejected = $penelitian->status === 'Rejected';
+
+        $penelitian->judul_penelitian = $request->judul_penelitian;
+        $penelitian->dana_disetujui   = $request->dana_disetujui;
+        $penelitian->program          = $request->program;
+        $penelitian->skema            = $request->skema;
+        $penelitian->fokus            = $request->fokus;
+        $penelitian->tahun            = $request->tahun;
+
+        if ($wasRejected) {
+            $penelitian->status = 'Pending';
+            $penelitian->catatan = null;
+        }
+
+        $penelitian->save();
+
+        if ($wasRejected) {
+            $dosen = \App\Models\User::find($penelitian->user_id);
+            $dosenName = $dosen ? $dosen->name : 'Dosen';
+            $dosenFakultas = $dosen ? $dosen->fakultas : null;
+
+            $adminFakultasList = \App\Models\User::where('role', 'admin fakultas')
+                ->when($dosenFakultas, fn($q) => $q->where('fakultas', $dosenFakultas))
+                ->get();
+            foreach ($adminFakultasList as $adminFakultas) {
+                Notification::send(
+                    $adminFakultas->id,
+                    'penelitian_resubmitted',
+                    'Penelitian Direvisi',
+                    "Dosen {$dosenName} telah merevisi penelitian yang sebelumnya ditolak: '{$penelitian->judul_penelitian}'.",
+                    ['penelitian_id' => $penelitian->id, 'user_id' => $penelitian->user_id]
+                );
+            }
+        }
+
+        if (Cache::supportsTags()) {
+            Cache::tags(['penelitian'])->flush();
+        } else {
+            Cache::flush();
+        }
+
+        \App\Models\ActivityLog::log($penelitian->user_id, 'Update Research', 'Dosen memperbarui penelitian: ' . $penelitian->judul_penelitian);
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Penelitian berhasil diperbarui.',
+            'penelitian' => $penelitian,
+        ]);
+    }
+
+    public function destroy($id)
+    {
+        $penelitian = Penelitian::findOrFail($id);
+
+        // Lock: cannot delete if already verified or approved
+        if (in_array($penelitian->status, ['Verified by Fakultas', 'Approved'])) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Penelitian yang sudah diverifikasi/disetujui tidak dapat dihapus.',
+            ], 403);
+        }
+
+        // Reverse points if any were awarded (e.g., from auto-approval)
+        if ($penelitian->awarded_points > 0 && $penelitian->status === 'Approved') {
+            $user = User::find($penelitian->user_id);
+            if ($user) {
+                $user->decrement('total_kpi_points', $penelitian->awarded_points);
+            }
+        }
+
+        // Delete stored file
+        if ($penelitian->file_url && $penelitian->file_url !== '-') {
+            $relativePath = str_replace('/storage/', '', $penelitian->file_url);
+            Storage::disk('public')->delete($relativePath);
+        }
+
+        $judulPenelitian = $penelitian->judul_penelitian;
+        $userId = $penelitian->user_id;
+
+        $penelitian->delete();
+
+        if (Cache::supportsTags()) {
+            Cache::tags(['penelitian'])->flush();
+        } else {
+            Cache::flush();
+        }
+
+        \App\Models\ActivityLog::log($userId, 'Delete Research', 'Dosen menghapus penelitian: ' . $judulPenelitian);
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Penelitian berhasil dihapus.',
+        ]);
+    }
 }

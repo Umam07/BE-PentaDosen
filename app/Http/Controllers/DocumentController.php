@@ -314,4 +314,146 @@ class DocumentController extends Controller
             'penelitian' => $penelitian
         ]);
     }
+
+    public function update(Request $request, $id)
+    {
+        $doc = Document::findOrFail($id);
+
+        // Lock: cannot edit if already verified or approved
+        if (in_array($doc->status, ['Verified by Fakultas', 'Approved'])) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Dokumen yang sudah diverifikasi/disetujui tidak dapat diubah.',
+            ], 403);
+        }
+
+        $request->validate([
+            'title'        => 'required|string',
+            'category'     => 'required|string',
+            'published_at' => 'required|date',
+            'doc_type'     => 'required|in:kpi,arsip',
+            'file'         => 'nullable|file|mimes:pdf,jpg,jpeg,png|max:10240',
+        ]);
+
+        $publishedAt = Carbon::parse($request->published_at);
+
+        // Determine KPI status
+        $isKpi = false;
+        $accreditationPeriod = null;
+
+        if ($request->doc_type === 'kpi') {
+            $periodStart = Carbon::parse($this->getKpiPeriodStart());
+            $periodEnd   = Carbon::parse($this->getKpiPeriodEnd());
+            $isKpi       = $publishedAt->between($periodStart, $periodEnd);
+            $accreditationPeriod = $this->getKpiPeriodLabel();
+        }
+
+        // Update file if a new one is provided
+        if ($request->hasFile('file')) {
+            // Delete old file
+            if ($doc->file_url && $doc->file_url !== '-' && $doc->file_url !== '') {
+                $oldPath = str_replace('/storage/', '', $doc->file_url);
+                Storage::disk('public')->delete($oldPath);
+            }
+            $path = $request->file('file')->store('uploads', 'public');
+            $doc->file_url = Storage::url($path);
+        }
+
+        $wasRejected = $doc->status === 'Rejected';
+
+        $doc->title               = $request->title;
+        $doc->category            = $request->category;
+        $doc->published_at        = $publishedAt->format('Y-m-d');
+        $doc->is_kpi_counted      = $isKpi;
+        $doc->accreditation_period = $accreditationPeriod;
+
+        if ($wasRejected) {
+            $doc->status = 'Pending';
+            $doc->catatan = null;
+        }
+
+        $doc->save();
+
+        if ($wasRejected) {
+            $dosen = \App\Models\User::find($doc->user_id);
+            $dosenName = $dosen ? $dosen->name : 'Dosen';
+            $dosenFakultas = $dosen ? $dosen->fakultas : null;
+
+            $adminFakultasList = \App\Models\User::where('role', 'admin fakultas')
+                ->when($dosenFakultas, fn($q) => $q->where('fakultas', $dosenFakultas))
+                ->get();
+            foreach ($adminFakultasList as $adminFakultas) {
+                Notification::send(
+                    $adminFakultas->id,
+                    'doc_resubmitted',
+                    'Dokumen Direvisi',
+                    "Dosen {$dosenName} telah merevisi dokumen yang sebelumnya ditolak: '{$doc->title}'.",
+                    ['doc_id' => $doc->id, 'user_id' => $doc->user_id]
+                );
+            }
+        }
+
+        // Clear cache
+        if (Cache::supportsTags()) {
+            Cache::tags(["user_documents_{$doc->user_id}", 'documents', 'admin_documents', 'stats'])->flush();
+        } else {
+            Cache::forget("user_documents_{$doc->user_id}");
+            Cache::flush();
+        }
+
+        \App\Models\ActivityLog::log($doc->user_id, 'Update Document', 'Dosen memperbarui dokumen: ' . $doc->title);
+
+        return response()->json([
+            'success'  => true,
+            'message'  => 'Dokumen berhasil diperbarui.',
+            'document' => $doc,
+        ]);
+    }
+
+    public function destroy($id)
+    {
+        $doc = Document::findOrFail($id);
+
+        // Lock: cannot delete if already verified or approved
+        if (in_array($doc->status, ['Verified by Fakultas', 'Approved'])) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Dokumen yang sudah diverifikasi/disetujui tidak dapat dihapus.',
+            ], 403);
+        }
+
+        // Reverse awarded points from user total
+        if ($doc->awarded_points > 0 && $doc->status === 'Approved') {
+            if ($doc->user) {
+                $doc->user->decrement('total_kpi_points', $doc->awarded_points);
+            }
+        }
+
+        // Delete stored file
+        if ($doc->file_url && $doc->file_url !== '-' && $doc->file_url !== '') {
+            $relativePath = str_replace('/storage/', '', $doc->file_url);
+            Storage::disk('public')->delete($relativePath);
+        }
+
+        $docTitle = $doc->title;
+        $userId   = $doc->user_id;
+
+        $doc->delete();
+
+        // Clear cache
+        if (Cache::supportsTags()) {
+            Cache::tags(["user_documents_{$userId}", 'documents', 'admin_documents', 'stats'])->flush();
+        } else {
+            Cache::forget("user_documents_{$userId}");
+            Cache::flush();
+        }
+
+        \App\Models\ActivityLog::log($userId, 'Delete Document', 'Dosen menghapus dokumen: ' . $docTitle);
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Dokumen berhasil dihapus.',
+        ]);
+    }
 }
+

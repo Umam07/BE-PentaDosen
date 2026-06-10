@@ -35,6 +35,9 @@ Route::middleware(['throttle:api'])->group(function () {
     Route::post('/documents/{id}/link-penelitian', [DocumentController::class, 'linkToPenelitian']);
     Route::get('/users/{id}/documents', [DocumentController::class, 'getUserDocuments']);
     Route::get('/users/{id}/approved-penelitian', [DocumentController::class, 'getApprovedPenelitian']);
+    Route::put('/documents/{id}', [DocumentController::class, 'update']);
+    Route::delete('/documents/{id}', [DocumentController::class, 'destroy']);
+
     
     Route::get('/admin/documents', [AdminController::class, 'getPendingDocuments']);
     Route::get('/admin/documents/all', [AdminController::class, 'getAllDocuments']);
@@ -47,6 +50,9 @@ Route::middleware(['throttle:api'])->group(function () {
     Route::get('/penelitian', [PenelitianController::class, 'index']);
     Route::post('/penelitian/{id}/verify', [PenelitianController::class, 'verify']);
     Route::post('/penelitian/{id}/upload-pdf', [PenelitianController::class, 'uploadPdf']);
+    Route::put('/penelitian/{id}', [PenelitianController::class, 'update']);
+    Route::delete('/penelitian/{id}', [PenelitianController::class, 'destroy']);
+
     
     Route::get('/admin/activity-logs', [ActivityLogController::class, 'index']);
     Route::post('/admin/activity-logs', [ActivityLogController::class, 'store']);
