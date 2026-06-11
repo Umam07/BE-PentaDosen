@@ -22,6 +22,17 @@ class DatabaseSeeder extends Seeder
         \App\Models\PointWeight::updateOrCreate(['category' => 'Proposal'], ['weight_value' => 10]);
         \App\Models\PointWeight::updateOrCreate(['category' => 'Laporan'], ['weight_value' => 10]);
 
+        // HKI Specific Categories
+        \App\Models\PointWeight::updateOrCreate(['category' => 'HKI Paten'], ['weight_value' => 40]);
+        \App\Models\PointWeight::updateOrCreate(['category' => 'HKI Paten Sederhana'], ['weight_value' => 20]);
+        \App\Models\PointWeight::updateOrCreate(['category' => 'HKI Merk'], ['weight_value' => 5]);
+        \App\Models\PointWeight::updateOrCreate(['category' => 'HKI Hak Cipta'], ['weight_value' => 5]);
+
+        // Buku Categories
+        \App\Models\PointWeight::updateOrCreate(['category' => 'Buku Referensi'], ['weight_value' => 40]);
+        \App\Models\PointWeight::updateOrCreate(['category' => 'Buku Ajar'], ['weight_value' => 20]);
+        \App\Models\PointWeight::updateOrCreate(['category' => 'Buku Monograf'], ['weight_value' => 20]);
+
         // Lecturers (Dosen)
         User::updateOrCreate(
             ['email' => 'dosen1@univ.edu'],
