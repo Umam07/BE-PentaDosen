@@ -33,19 +33,19 @@ class DatabaseSeeder extends Seeder
         );
         User::updateOrCreate(
             ['email' => 'kiki@univ.edu'],
-            ['name' => 'Kiki Aimar Wicaksana', 'role' => 'dosen', 'scholar_id' => 'V4Qtn5YAAAAJ&hl  ', 'scopus_id' => '60103952600', 'fakultas' => 'Fakultas Ekonomi dan Bisnis', 'program_studi' => 'Akuntansi', 'password' => bcrypt('password')]
+            ['name' => 'Kiki Aimar Wicaksana', 'role' => 'dosen', 'scholar_id' => 'V4Qtn5YAAAAJ&hl  ', 'scopus_id' => '60103952600', 'fakultas' => 'Fakultas Ekonomi dan Bisnis', 'program_studi' => 'Akuntansi', 'password' => bcrypt('password'), 'total_kpi_points' => 0]
         );
         User::updateOrCreate(
             ['email' => 'danis@univ.edu'],
-            ['name' => 'Rafi Danis', 'role' => 'dosen', 'scholar_id' => 'ghULz5YAAAAJ&hl', 'scopus_id' => '57205016667', 'fakultas' => 'Fakultas Hukum', 'program_studi' => 'Hukum', 'password' => bcrypt('password')]
+            ['name' => 'Rafi Danis', 'role' => 'dosen', 'scholar_id' => 'ghULz5YAAAAJ&hl', 'scopus_id' => '57205016667', 'fakultas' => 'Fakultas Hukum', 'program_studi' => 'Hukum', 'password' => bcrypt('password'), 'total_kpi_points' => 0]
         );
         User::updateOrCreate(
             ['email' => 'umam@univ.edu'],
-            ['name' => "Umamz", 'role' => 'dosen', 'scholar_id' => 'tBjAaI0AAAAJ&hl', 'scopus_id' => '57220091394', 'fakultas' => 'Fakultas Psikologi', 'program_studi' => 'Psikologi', 'password' => bcrypt('password')]
+            ['name' => "Umamz", 'role' => 'dosen', 'scholar_id' => 'tBjAaI0AAAAJ&hl', 'scopus_id' => '57220091394', 'fakultas' => 'Fakultas Psikologi', 'program_studi' => 'Psikologi', 'password' => bcrypt('password'), 'total_kpi_points' => 0]
         );
         User::updateOrCreate(
             ['email' => 'dosen_fkg@univ.edu'],
-            ['name' => 'Dr. drg. H. Anton Rahardjo, M.Sc.PH', 'role' => 'dosen', 'scholar_id' => '', 'scopus_id' => '', 'fakultas' => 'Fakultas Kedokteran Gigi', 'program_studi' => 'Kedokteran Gigi', 'password' => bcrypt('password'), 'total_kpi_points' => 0]
+            ['name' => 'Dr. drg. H. Anton Rahardjo', 'role' => 'dosen', 'scholar_id' => 'FRgV4kAAAAAJ&hl', 'scopus_id' => '57205060934', 'fakultas' => 'Fakultas Kedokteran Gigi', 'program_studi' => 'Kedokteran Gigi', 'password' => bcrypt('password'), 'total_kpi_points' => 0]
         );
 
         // Administration & Leadership
