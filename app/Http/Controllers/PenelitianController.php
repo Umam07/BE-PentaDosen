@@ -78,7 +78,7 @@ class PenelitianController extends Controller
 
         // Clear cache
         if (Cache::supportsTags()) {
-            Cache::tags(['penelitian'])->flush();
+            Cache::tags(['penelitian', 'stats', 'leaderboard', 'lecturers'])->flush();
         } else {
             Cache::flush();
         }
@@ -227,7 +227,7 @@ class PenelitianController extends Controller
 
         // Clear cache
         if (Cache::supportsTags()) {
-            Cache::tags(['penelitian'])->flush();
+            Cache::tags(['penelitian', 'stats', 'leaderboard', 'lecturers'])->flush();
         } else {
             Cache::flush();
         }
@@ -425,7 +425,7 @@ class PenelitianController extends Controller
         $penelitian->delete();
 
         if (Cache::supportsTags()) {
-            Cache::tags(['penelitian'])->flush();
+            Cache::tags(['penelitian', 'stats', 'leaderboard', 'lecturers'])->flush();
         } else {
             Cache::flush();
         }

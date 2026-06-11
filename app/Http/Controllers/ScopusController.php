@@ -162,6 +162,12 @@ class ScopusController extends Controller
 
         \App\Models\ActivityLog::log($user->id, 'Sync Scopus', 'User melakukan sinkronisasi data Scopus');
 
+        if (Cache::supportsTags()) {
+            Cache::tags(['stats', 'leaderboard', 'lecturers'])->flush();
+        } else {
+            Cache::flush();
+        }
+
         return response()->json(['success' => true, 'message' => 'Scopus Data synced successfully']);
     }
 
