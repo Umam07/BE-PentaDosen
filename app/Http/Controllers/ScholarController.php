@@ -75,10 +75,6 @@ class ScholarController extends Controller
                 $user->update(['avatar' => $thumbnail]);
             }
 
-            // Get weight for Jurnal Nasional as default for Scholar
-            $weight = \App\Models\PointWeight::where('category', 'Jurnal Nasional')->first();
-            $awardedPoints = $weight ? $weight->weight_value : 20;
-
             // KPI Active period
             $kpiPeriodStart = \Carbon\Carbon::parse('2025-01-01');
             $kpiPeriodEnd   = \Carbon\Carbon::parse('2027-12-31');
@@ -100,30 +96,46 @@ class ScholarController extends Controller
                     ]
                 );
 
+                // Calculate GS Points:
+                // GS DOCUMENT: 0.5
+                // GS DOCUMENT TERSITASI: 0.5 (if citations > 0)
+                // GS CITATION PER DOCUMENT NUMBER (CUT OFF = 500): 0.25 (citations * 0.25, max 500 citations)
+                $awardedPoints = 0.5 + ($citations > 0 ? 0.5 : 0) + min($citations, 500) * 0.25;
+
                 // Add to Document table automatically if within KPI period
                 if ($year) {
                     $publishedAt = \Carbon\Carbon::createFromDate($year, 1, 1);
                     $isKpi = $publishedAt->between($kpiPeriodStart, $kpiPeriodEnd);
 
                     if ($isKpi) {
-                        $doc = \App\Models\Document::firstOrCreate(
-                            [
+                        $doc = \App\Models\Document::where('user_id', $user->id)
+                            ->where('title', $pub['title'])
+                            ->first();
+
+                        if ($doc) {
+                            $pointDiff = $awardedPoints - $doc->awarded_points;
+                            $doc->update([
+                                'category' => 'Google Scholar',
+                                'awarded_points' => $awardedPoints,
+                            ]);
+                            if ($pointDiff != 0) {
+                                $user->increment('total_kpi_points', $pointDiff);
+                            }
+                        } else {
+                            $doc = \App\Models\Document::create([
                                 'user_id' => $user->id,
-                                'title' => $pub['title']
-                            ],
-                            [
-                                'category' => 'Jurnal Nasional',
+                                'title' => $pub['title'],
+                                'category' => 'Google Scholar',
                                 'file_url' => '', // Cannot be null, use empty string
                                 'published_at' => $publishedAt->format('Y-m-d'),
                                 'is_kpi_counted' => true,
                                 'accreditation_period' => $kpiPeriodLabel,
                                 'status' => 'Approved',
                                 'awarded_points' => $awardedPoints,
-                            ]
-                        );
-
-                        if ($doc->wasRecentlyCreated && $awardedPoints > 0) {
-                            $user->increment('total_kpi_points', $awardedPoints);
+                            ]);
+                            if ($awardedPoints > 0) {
+                                $user->increment('total_kpi_points', $awardedPoints);
+                            }
                         }
                     }
                 }
@@ -163,15 +175,19 @@ class ScholarController extends Controller
                 
                 // Also remove auto-synced documents from Scholar to keep points accurate
                 \App\Models\Document::where('user_id', $user->id)
-                    ->where('category', 'Jurnal Nasional')
+                    ->where('category', 'Google Scholar')
                     ->where('file_url', '')
                     ->delete();
                 
-                // Recalculate total kpi points (optional but recommended if points are stored in user table)
-                $totalPoints = \App\Models\Document::where('user_id', $user->id)
+                // Recalculate total kpi points (sum documents and penelitian)
+                $totalDocPoints = \App\Models\Document::where('user_id', $user->id)
                     ->where('status', 'Approved')
                     ->sum('awarded_points');
-                $user->update(['total_kpi_points' => $totalPoints]);
+                $totalPenPoints = \App\Models\Penelitian::where('user_id', $user->id)
+                    ->where('status', 'Approved')
+                    ->sum('awarded_points');
+
+                $user->update(['total_kpi_points' => $totalDocPoints + $totalPenPoints]);
             }
         });
 

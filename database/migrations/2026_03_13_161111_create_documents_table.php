@@ -14,6 +14,8 @@ return new class extends Migration
         Schema::create('documents', function (Blueprint $table) {
             $table->id();
             $table->foreignId('user_id')->constrained()->onDelete('cascade');
+            $table->unsignedBigInteger('penelitian_id')->nullable();
+            $table->foreign('penelitian_id')->references('id')->on('penelitian')->onDelete('set null');
             $table->string('title');
             $table->string('category');
             $table->string('file_url');
@@ -21,7 +23,11 @@ return new class extends Migration
             $table->boolean('is_kpi_counted')->default(false);
             $table->string('accreditation_period')->nullable();
             $table->string('status')->default('Pending');
-            $table->integer('awarded_points')->default(0);
+            $table->double('awarded_points')->default(0.0);
+            $table->text('catatan')->nullable();
+            $table->string('quartile')->nullable();
+            $table->string('author_role')->nullable();
+            $table->boolean('is_hyperauthor')->default(false);
             $table->timestamps();
         });
     }

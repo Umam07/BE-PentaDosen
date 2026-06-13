@@ -87,6 +87,18 @@ class DocumentController extends Controller
             $autoVerified = true;
             $weight = PointWeight::where('category', $request->category)->first();
             $awardedPoints = $weight ? $weight->weight_value : 0;
+
+            if ($request->category === 'HKI Hak Cipta') {
+                $year = $publishedAt->year;
+                $approvedCount = Document::where('user_id', $request->user_id)
+                    ->where('category', 'HKI Hak Cipta')
+                    ->where('status', 'Approved')
+                    ->whereYear('published_at', $year)
+                    ->count();
+                if ($approvedCount >= 2) {
+                    $awardedPoints = 0;
+                }
+            }
         } elseif ($isKpi) {
             $titleNormalized = strtolower(trim($request->title));
 
@@ -104,6 +116,18 @@ class DocumentController extends Controller
                 $autoVerified = true;
                 $weight = PointWeight::where('category', $request->category)->first();
                 $awardedPoints = $weight ? $weight->weight_value : 0;
+
+                if ($request->category === 'HKI Hak Cipta') {
+                    $year = $publishedAt->year;
+                    $approvedCount = Document::where('user_id', $request->user_id)
+                        ->where('category', 'HKI Hak Cipta')
+                        ->where('status', 'Approved')
+                        ->whereYear('published_at', $year)
+                        ->count();
+                    if ($approvedCount >= 2) {
+                        $awardedPoints = 0;
+                    }
+                }
             }
         }
 
@@ -140,9 +164,18 @@ class DocumentController extends Controller
                     'awarded_points' => $awardedPoints,
                 ]);
 
-                // If auto-verified, add points to user's total KPI
-                if ($autoVerified && $awardedPoints > 0) {
-                    $doc->user->increment('total_kpi_points', $awardedPoints);
+                // If auto-verified, update user's total KPI points
+                if ($autoVerified) {
+                    $totalDocPoints = Document::where('user_id', $request->user_id)
+                        ->where('status', 'Approved')
+                        ->sum('awarded_points');
+                    $totalPenPoints = \App\Models\Penelitian::where('user_id', $request->user_id)
+                        ->where('status', 'Approved')
+                        ->sum('awarded_points');
+
+                    $doc->user->update([
+                        'total_kpi_points' => $totalDocPoints + $totalPenPoints
+                    ]);
                 }
             }
 
@@ -422,12 +455,7 @@ class DocumentController extends Controller
             ], 403);
         }
 
-        // Reverse awarded points from user total
-        if ($doc->awarded_points > 0 && $doc->status === 'Approved') {
-            if ($doc->user) {
-                $doc->user->decrement('total_kpi_points', $doc->awarded_points);
-            }
-        }
+        // No inline decrement here, we'll recalculate the sum after delete
 
         // Delete stored file
         if ($doc->file_url && $doc->file_url !== '-' && $doc->file_url !== '') {
@@ -439,6 +467,19 @@ class DocumentController extends Controller
         $userId   = $doc->user_id;
 
         $doc->delete();
+
+        // Recalculate total kpi points (sum documents and penelitian)
+        $user = User::find($userId);
+        if ($user) {
+            $totalDocPoints = Document::where('user_id', $userId)
+                ->where('status', 'Approved')
+                ->sum('awarded_points');
+            $totalPenPoints = \App\Models\Penelitian::where('user_id', $userId)
+                ->where('status', 'Approved')
+                ->sum('awarded_points');
+
+            $user->update(['total_kpi_points' => $totalDocPoints + $totalPenPoints]);
+        }
 
         // Clear cache
         if (Cache::supportsTags()) {

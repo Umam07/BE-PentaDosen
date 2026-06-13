@@ -15,6 +15,7 @@ return new class extends Migration
             $table->id();
             $table->string('penta_id', 7)->unique()->nullable();
             $table->string('name');
+            $table->text('avatar')->nullable();
             $table->string('email')->unique();
             $table->string('nidn')->nullable();
             $table->string('phone')->nullable();
@@ -23,7 +24,7 @@ return new class extends Migration
             $table->string('role')->default('dosen');
             $table->string('scholar_id')->nullable();
             $table->string('scopus_id')->nullable();
-            $table->integer('total_kpi_points')->default(0);
+            $table->double('total_kpi_points')->default(0.0);
             $table->string('program_studi')->nullable();
             $table->string('fakultas')->nullable();
             $table->rememberToken();

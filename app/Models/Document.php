@@ -18,11 +18,15 @@ class Document extends Model
         'status',
         'awarded_points',
         'catatan',
+        'quartile',
+        'author_role',
+        'is_hyperauthor',
     ];
 
     protected $casts = [
         'published_at' => 'date',
         'is_kpi_counted' => 'boolean',
+        'is_hyperauthor' => 'boolean',
     ];
 
     public function user()

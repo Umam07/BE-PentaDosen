@@ -13,7 +13,19 @@ class ScopusPublication extends Model
         'journal',
         'year',
         'citations',
-        'doi'
+        'doi',
+        'quartile',
+        'author_role',
+        'is_hyperauthor',
+        'awarded_points',
+        'subtype',
+        'total_authors',
+    ];
+
+    protected $casts = [
+        'is_hyperauthor' => 'boolean',
+        'awarded_points' => 'double',
+        'total_authors' => 'integer',
     ];
 
     public function user()

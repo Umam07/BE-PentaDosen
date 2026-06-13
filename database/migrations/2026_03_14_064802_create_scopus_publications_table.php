@@ -20,6 +20,12 @@ return new class extends Migration
             $table->string('year')->nullable();
             $table->integer('citations')->default(0);
             $table->string('doi')->nullable();
+            $table->string('quartile')->nullable();
+            $table->string('author_role')->nullable();
+            $table->boolean('is_hyperauthor')->default(false);
+            $table->double('awarded_points')->default(0.0);
+            $table->string('subtype')->nullable();
+            $table->integer('total_authors')->default(1);
             $table->timestamps();
         });
     }

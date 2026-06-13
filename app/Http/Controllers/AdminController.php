@@ -164,6 +164,21 @@ class AdminController extends Controller
             $weight = PointWeight::where('category', $doc->category)->first();
             $categoryPoints = $weight ? $weight->weight_value : 0;
 
+            // Enforce HKI Hak Cipta limit: max 2/tahun
+            if ($doc->category === 'HKI Hak Cipta') {
+                $year = $doc->published_at ? \Carbon\Carbon::parse($doc->published_at)->year : null;
+                if ($year) {
+                    $approvedCount = Document::where('user_id', $doc->user_id)
+                        ->where('category', 'HKI Hak Cipta')
+                        ->where('status', 'Approved')
+                        ->whereYear('published_at', $year)
+                        ->count();
+                    if ($approvedCount >= 2) {
+                        $categoryPoints = 0;
+                    }
+                }
+            }
+
             // Only award KPI points if document is within accreditation period
             $points = $doc->is_kpi_counted ? $categoryPoints : 0;
 
@@ -172,9 +187,17 @@ class AdminController extends Controller
                     'status' => $status,
                     'awarded_points' => $points
                 ]);
-                if ($points > 0) {
-                    $doc->user->increment('total_kpi_points', $points);
-                }
+                
+                $totalDocPoints = Document::where('user_id', $doc->user_id)
+                    ->where('status', 'Approved')
+                    ->sum('awarded_points');
+                $totalPenPoints = \App\Models\Penelitian::where('user_id', $doc->user_id)
+                    ->where('status', 'Approved')
+                    ->sum('awarded_points');
+
+                $doc->user->update([
+                    'total_kpi_points' => $totalDocPoints + $totalPenPoints
+                ]);
             });
         } else {
             // Either admin fakultas or admin lppm can reject

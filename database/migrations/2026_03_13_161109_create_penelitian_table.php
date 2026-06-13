@@ -23,6 +23,7 @@ return new class extends Migration
             $table->string('file_url');
             $table->string('status')->default('Pending');
             $table->double('awarded_points', 8, 2)->default(0);
+            $table->text('catatan')->nullable();
             $table->timestamps();
         });
     }

@@ -46,14 +46,12 @@ class PenelitianController extends Controller
 
         if ($status === 'Approved') {
             if ($request->program === 'hibah luar negeri') {
-                $awardedPoints += 60;
+                $awardedPoints += 10;
             } elseif ($request->program === 'hibah dikti') {
-                $awardedPoints += 50;
+                $awardedPoints += 6;
             } elseif ($request->program === 'hibah internal') {
-                $awardedPoints += 40;
+                $awardedPoints += 3;
             }
-            $jutaRupiah = $request->dana_disetujui / 1000000;
-            $awardedPoints += $jutaRupiah * 0.05;
         }
 
         $penelitian = Penelitian::create([
@@ -200,16 +198,12 @@ class PenelitianController extends Controller
             // Calculate points
             $points = 0;
             if ($penelitian->program === 'hibah luar negeri') {
-                $points += 60;
+                $points += 10;
             } elseif ($penelitian->program === 'hibah dikti') {
-                $points += 50; // External
+                $points += 6; // External
             } elseif ($penelitian->program === 'hibah internal') {
-                $points += 40;
+                $points += 3;
             }
-
-            // Rupiah points: 0.05 per million (juta rupiah)
-            $jutaRupiah = $penelitian->dana_disetujui / 1000000;
-            $points += $jutaRupiah * 0.05;
 
             $penelitian->awarded_points = $points;
             
