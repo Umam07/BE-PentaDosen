@@ -296,12 +296,17 @@ class ScopusController extends Controller
                     $isArticle = false;
                 }
 
-                // 4. Calculate points using new 60/40 schema
-                //    - Max base points: Article = 40, Non-Article = 30
-                //    - Single Author  : 100% of max
-                //    - First Author   : 60% of max
-                //    - Member Author  : 40% of max ÷ number of member authors (totalAuthors - 1)
-                $maxPoints = $isArticle ? 40 : 30;
+                // 4. Calculate points using 60/40 schema + Quartile
+                //    Quartile determines max base points for Articles:
+                //      Q1 = 40 pts, Q2 = 30 pts, Q3 = 20 pts, Q4/None = 10 pts
+                //    Non-Article max = 30 pts (flat, no quartile)
+                //    Single Author  = 100% of max
+                //    First Author   = 60%  of max
+                //    Member Author  = 40%  of max ÷ number of member authors
+                $quartileMax = ['Q1' => 40, 'Q2' => 30, 'Q3' => 20, 'Q4' => 10];
+                $maxPoints = $isArticle
+                    ? ($quartileMax[$quartile] ?? 10)
+                    : 30;
 
                 if ($isHyperauthor) {
                     // Hyperauthor: flat reduced points
