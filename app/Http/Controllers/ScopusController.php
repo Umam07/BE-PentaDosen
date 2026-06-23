@@ -110,33 +110,43 @@ class ScopusController extends Controller
                     $year = substr($entry['prism:coverDate'], 0, 4);
                 }
 
-                // 1. Detect Journal Quartile (SJR lookup & API fallback)
-                $issn = $entry['prism:issn'] ?? null;
+                // 1. Detect Journal Quartile (SJR lookup with normalized ISSN)
+                $issn  = $entry['prism:issn']  ?? null;
                 $eIssn = $entry['prism:eIssn'] ?? null;
                 $quartile = null;
 
-                if ($issn) {
-                    $sjr = DB::table('sjr_journals')->where('issn', $issn)->first();
-                    if ($sjr) {
-                        $quartile = $sjr->quartile;
+                // Normalize ISSNs: try both with-dash (xxxx-xxxx) and without-dash (xxxxxxxx) forms
+                $issnVariants = [];
+                foreach ([$issn, $eIssn] as $raw) {
+                    if (!$raw) continue;
+                    $clean = preg_replace('/[^0-9Xx]/', '', $raw);
+                    $issnVariants[] = strtoupper($clean);                          // no dash
+                    if (strlen($clean) === 8) {
+                        $issnVariants[] = substr($clean, 0, 4) . '-' . substr($clean, 4); // with dash
                     }
                 }
-                if (!$quartile && $eIssn) {
-                    $sjr = DB::table('sjr_journals')->where('issn', $eIssn)->first();
+                $issnVariants = array_unique(array_filter($issnVariants));
+
+                if (!empty($issnVariants)) {
+                    $sjr = DB::table('sjr_journals')
+                        ->whereIn(DB::raw('UPPER(issn)'), $issnVariants)
+                        ->first();
                     if ($sjr) {
                         $quartile = $sjr->quartile;
                     }
                 }
 
-                // Fallback to Scopus Sources API
-                if (!$quartile && ($issn || $eIssn)) {
-                    $searchIssn = $issn ?: $eIssn;
+                // Fallback to Scopus Sources API (CiteScore) if SJR not found locally
+                if (!$quartile && !empty($issnVariants)) {
+                    $searchIssn = preg_replace('/-/', '', $issn ?: $eIssn); // use no-dash form
                     try {
                         $sourceRes = Http::withHeaders([
                             'X-ELS-APIKey' => $apiKey,
                             'Accept' => 'application/json'
                         ])->timeout(8)->get("https://api.elsevier.com/content/serial/title", [
-                            'issn' => $searchIssn
+                            'issn'  => $searchIssn,
+                            'view'  => 'CITESCORE',
+                            'field' => 'citeScoreYearInfoList',
                         ]);
                         if ($sourceRes->successful()) {
                             $sourceData = $sourceRes->json();
@@ -175,9 +185,10 @@ class ScopusController extends Controller
                 }
 
                 // 2. Detect Author Role (Single, First, Member Author, Hyperauthor)
-                $authorList = $entry['author'] ?? [];
+                //    Primary: use Scopus author list (authid matching)
+                $authorList   = $entry['author'] ?? [];
                 $totalAuthors = count($authorList);
-                $authorRole = 'Member Author';
+                $authorRole   = 'Member Author';
                 $isHyperauthor = false;
 
                 if ($totalAuthors > 16) {
@@ -201,43 +212,19 @@ class ScopusController extends Controller
                     $authorRole = 'Member Author';
                 }
 
-                // Fallback to CrossRef API if COMPLETE view didn't return authors or returned empty
+                // Fallback 1: CrossRef API (if Scopus didn't return any authors)
                 if ($totalAuthors === 0 && isset($entry['prism:doi']) && !empty($entry['prism:doi'])) {
                     try {
                         $crossRefRes = Http::timeout(5)->get("https://api.crossref.org/works/" . $entry['prism:doi']);
                         if ($crossRefRes->successful()) {
-                            $crData = $crossRefRes->json();
+                            $crData    = $crossRefRes->json();
                             $crAuthors = $crData['message']['author'] ?? [];
                             $totalAuthors = count($crAuthors);
                             if ($totalAuthors > 16) {
                                 $isHyperauthor = true;
                             }
 
-                            // Normalizing user name for matching
-                            $normUser = strtolower(preg_replace('/[^a-z0-9 ]/i', '', $user->name));
-                            $titles = ['s.kom', 'm.kom', 'dr.', 'dr', 'drg.', 'drg', 's.si', 'm.kes', 's.psi', 'm.psi', 's.h.', 'm.h.', 'prof.'];
-                            foreach ($titles as $t) {
-                                $normUser = str_replace(strtolower($t), '', $normUser);
-                            }
-                            $userWords = array_filter(explode(' ', trim($normUser)));
-
-                            $userIndex = -1;
-                            foreach ($crAuthors as $idx => $cra) {
-                                $given = strtolower($cra['given'] ?? '');
-                                $family = strtolower($cra['family'] ?? '');
-                                $fullName = $given . ' ' . $family;
-
-                                $matchCount = 0;
-                                foreach ($userWords as $w) {
-                                    if (str_contains($fullName, $w)) {
-                                        $matchCount++;
-                                    }
-                                }
-                                if ($matchCount >= 2 || (count($userWords) === 1 && $matchCount === 1)) {
-                                    $userIndex = $idx;
-                                    break;
-                                }
-                            }
+                            $userIndex = $this->matchAuthorInList($user->name, $crAuthors, 'crossref');
 
                             if ($totalAuthors === 1) {
                                 $authorRole = 'Single Author';
@@ -252,8 +239,47 @@ class ScopusController extends Controller
                     }
                 }
 
-                // If role is still Member Author (or we couldn't fetch authors), try matching dc:creator
-                if ($authorRole === 'Member Author' && isset($entry['dc:creator'])) {
+                // Fallback 2: OpenAlex API (free, comprehensive author data — best match for SINTA)
+                if ($totalAuthors === 0) {
+                    $doi   = $entry['prism:doi'] ?? null;
+                    $title = $entry['dc:title']   ?? null;
+                    try {
+                        $oaUrl    = $doi
+                            ? "https://api.openalex.org/works/https://doi.org/{$doi}"
+                            : "https://api.openalex.org/works?filter=title.search:" . urlencode($title) . "&per-page=1";
+                        $oaRes = Http::timeout(8)->withHeaders(['User-Agent' => 'PentaDosen/1.0 (mailto:admin@pentadosen.id)'])->get($oaUrl);
+                        if ($oaRes->successful()) {
+                            $oaData    = $oaRes->json();
+                            $oaWork    = $doi ? $oaData : ($oaData['results'][0] ?? null);
+                            $oaAuthors = $oaWork['authorships'] ?? [];
+                            $totalAuthors = count($oaAuthors);
+                            if ($totalAuthors > 16) {
+                                $isHyperauthor = true;
+                            }
+
+                            $userIndex = $this->matchAuthorInList($user->name, $oaAuthors, 'openalex');
+
+                            if ($totalAuthors === 1) {
+                                $authorRole = 'Single Author';
+                            } elseif ($userIndex === 0) {
+                                $authorRole = 'First Author';
+                            } elseif ($userIndex > 0) {
+                                $authorRole = 'Member Author';
+                            }
+                        }
+                    } catch (\Exception $e) {
+                        // Silently ignore OpenAlex failures
+                    }
+                }
+
+                // Fallback 3: dc:creator is always the first/corresponding author in Scopus standard API
+                if ($totalAuthors === 0 && isset($entry['dc:creator'])) {
+                    $totalAuthors = 1; // At minimum we know at least 1 author
+                    if ($this->matchCreatorName($user->name, $entry['dc:creator'])) {
+                        $authorRole = 'First Author';
+                    }
+                } elseif ($authorRole === 'Member Author' && $totalAuthors > 0 && isset($entry['dc:creator'])) {
+                    // If we couldn't positively ID user in the list but dc:creator matches, they are first
                     if ($this->matchCreatorName($user->name, $entry['dc:creator'])) {
                         $authorRole = 'First Author';
                     }
@@ -270,79 +296,50 @@ class ScopusController extends Controller
                     $isArticle = false;
                 }
 
-                // 4. Map to PointWeight and calculate points
-                $pointCategory = 'Jurnal Internasional'; // default fallback
-                if ($isArticle) {
-                    if ($authorRole === 'Single Author') {
-                        $pointCategory = 'Scopus Article (Single Author)';
-                    } elseif ($isHyperauthor) {
-                        if ($authorRole === 'First Author') {
-                            $pointCategory = 'Scopus Article Hyperauthor (First Author)';
-                        } else {
-                            $pointCategory = 'Scopus Article Hyperauthor (Member Author)';
-                        }
-                    } else {
-                        $q = in_array($quartile, ['Q1', 'Q2', 'Q3', 'Q4']) ? $quartile : 'Q4';
-                        if ($authorRole === 'First Author') {
-                            $pointCategory = "Scopus Article {$q} (First Author)";
-                        } else {
-                            $pointCategory = "Scopus Article {$q} (Member Author)";
-                        }
-                    }
-                } else {
-                    if ($authorRole === 'Single Author') {
-                        $pointCategory = 'Scopus Non Article (Single Author)';
-                    } elseif ($authorRole === 'First Author') {
-                        $pointCategory = 'Scopus Non Article (First Author)';
-                    } else {
-                        $pointCategory = 'Scopus Non Article (Member Author)';
-                    }
-                }
+                // 4. Calculate points using new 60/40 schema
+                //    - Max base points: Article = 40, Non-Article = 30
+                //    - Single Author  : 100% of max
+                //    - First Author   : 60% of max
+                //    - Member Author  : 40% of max ÷ number of member authors (totalAuthors - 1)
+                $maxPoints = $isArticle ? 40 : 30;
 
-                $pointWeightObj = \App\Models\PointWeight::where('category', $pointCategory)->first();
-                if (!$pointWeightObj) {
-                    if (!$isArticle) {
-                        if ($authorRole === 'Single Author') $basePoints = 30;
-                        elseif ($authorRole === 'First Author') $basePoints = 18;
-                        else $basePoints = 12;
+                if ($isHyperauthor) {
+                    // Hyperauthor: flat reduced points
+                    if ($authorRole === 'Single Author') {
+                        $awardedPoints = $maxPoints;
+                    } elseif ($authorRole === 'First Author') {
+                        $awardedPoints = 2; // Hyperauthor First = 2 pts
                     } else {
-                        if ($authorRole === 'Single Author') $basePoints = 40;
-                        elseif ($isHyperauthor) {
-                            $basePoints = ($authorRole === 'First Author') ? 24 : 1;
-                        } else {
-                            $q = in_array($quartile, ['Q1', 'Q2', 'Q3', 'Q4']) ? $quartile : 'Q4';
-                            if ($authorRole === 'First Author') {
-                                $basePoints = ($q === 'Q1') ? 24 : (($q === 'Q2') ? 22 : (($q === 'Q3') ? 20 : 18));
-                            } else {
-                                $basePoints = ($q === 'Q1') ? 16 : (($q === 'Q2') ? 14 : (($q === 'Q3') ? 12 : 10));
-                            }
-                        }
+                        $awardedPoints = 0.5; // Hyperauthor Member = 0.5 pts
                     }
+                } elseif ($authorRole === 'Single Author') {
+                    $awardedPoints = $maxPoints; // 100%
+                } elseif ($authorRole === 'First Author') {
+                    $awardedPoints = $maxPoints * 0.60; // 60%
                 } else {
-                    $basePoints = $pointWeightObj->weight_value;
+                    // Member Author: 40% divided equally among all members
+                    $memberCount   = max(1, $totalAuthors - 1);
+                    $awardedPoints = ($maxPoints * 0.40) / $memberCount;
                 }
 
                 $citations = (int)($entry['citedby-count'] ?? 0);
-                $citationPoints = $totalAuthors > 0 ? ($citations / $totalAuthors) : 0;
-                $citationBonus = $citations > 0 ? 5 : 0;
-                $awardedPoints = $basePoints + $citationPoints + $citationBonus;
 
                 $publicationsToInsert[] = [
-                    'user_id' => $user->id,
-                    'title' => $entry['dc:title'],
-                    'authors' => $entry['dc:creator'] ?? null,
-                    'journal' => $entry['prism:publicationName'] ?? null,
-                    'year' => $year,
-                    'citations' => $citations,
-                    'doi' => $entry['prism:doi'] ?? null,
-                    'quartile' => $quartile === 'None' ? null : $quartile,
-                    'author_role' => $authorRole,
+                    'user_id'       => $user->id,
+                    'title'         => $entry['dc:title'],
+                    'authors'       => $entry['dc:creator'] ?? null,
+                    'journal'       => $entry['prism:publicationName'] ?? null,
+                    'year'          => $year,
+                    'citations'     => $citations,
+                    'doi'           => $entry['prism:doi'] ?? null,
+                    'quartile'      => $quartile === 'None' ? null : $quartile,
+                    'author_role'   => $authorRole,
                     'is_hyperauthor' => $isHyperauthor,
-                    'awarded_points' => $awardedPoints,
-                    'subtype' => $subtype ?: ($subtypeDescription ?: null),
+                    'awarded_points' => round($awardedPoints, 2),
+                    'subtype'       => $subtype ?: ($subtypeDescription ?: null),
                     'total_authors' => $totalAuthors,
-                    'created_at' => now(),
-                    'updated_at' => now(),
+                    'created_at'    => now(),
+                    'updated_at'    => now(),
                 ];
 
                 // Add to Document table automatically if within KPI period
@@ -358,9 +355,9 @@ class ScopusController extends Controller
                         if ($doc) {
                             $pointDiff = $awardedPoints - $doc->awarded_points;
                             $doc->update([
-                                'awarded_points' => $awardedPoints,
-                                'quartile' => $quartile === 'None' ? null : $quartile,
-                                'author_role' => $authorRole,
+                                'awarded_points' => round($awardedPoints, 2),
+                                'quartile'       => $quartile === 'None' ? null : $quartile,
+                                'author_role'    => $authorRole,
                                 'is_hyperauthor' => $isHyperauthor,
                             ]);
                             if ($pointDiff != 0) {
@@ -368,18 +365,18 @@ class ScopusController extends Controller
                             }
                         } else {
                             $doc = \App\Models\Document::create([
-                                'user_id' => $user->id,
-                                'title' => $entry['dc:title'],
-                                'category' => 'Jurnal Internasional',
-                                'file_url' => '',
-                                'published_at' => $publishedAt->format('Y-m-d'),
-                                'is_kpi_counted' => true,
+                                'user_id'             => $user->id,
+                                'title'               => $entry['dc:title'],
+                                'category'            => 'Jurnal Internasional',
+                                'file_url'            => '',
+                                'published_at'        => $publishedAt->format('Y-m-d'),
+                                'is_kpi_counted'      => true,
                                 'accreditation_period' => $kpiPeriodLabel,
-                                'status' => 'Approved',
-                                'awarded_points' => $awardedPoints,
-                                'quartile' => $quartile === 'None' ? null : $quartile,
-                                'author_role' => $authorRole,
-                                'is_hyperauthor' => $isHyperauthor,
+                                'status'              => 'Approved',
+                                'awarded_points'      => round($awardedPoints, 2),
+                                'quartile'            => $quartile === 'None' ? null : $quartile,
+                                'author_role'         => $authorRole,
+                                'is_hyperauthor'      => $isHyperauthor,
                             ]);
                             if ($awardedPoints > 0) {
                                 $user->increment('total_kpi_points', $awardedPoints);
@@ -495,6 +492,53 @@ class ScopusController extends Controller
         });
 
         return response()->json($cached['data'], $cached['status']);
+    }
+
+    /**
+     * Match user name against an author list from CrossRef or OpenAlex.
+     * Returns the index of the matching author, or -1 if not found.
+     */
+    private function matchAuthorInList(string $userName, array $authors, string $source): int
+    {
+        $normUser = strtolower(preg_replace('/[^a-z0-9 ]/i', '', $userName));
+        $titles = ['s.kom', 'm.kom', 'dr.', 'dr', 'drg.', 'drg', 's.si', 'm.kes', 's.si.', 's.si,', 's.psi', 'm.psi', 's.h.', 'm.h.', 'prof.', 's.s.', 'm.t.', 's.t.', 'mt', 'st'];
+        foreach ($titles as $t) {
+            $normUser = str_replace(strtolower($t), '', $normUser);
+        }
+        $userWords = array_values(array_filter(explode(' ', trim($normUser))));
+
+        foreach ($authors as $idx => $auth) {
+            if ($source === 'crossref') {
+                $given  = strtolower($auth['given']  ?? '');
+                $family = strtolower($auth['family'] ?? '');
+                $authorName = preg_replace('/[^a-z0-9 ]/', '', $given . ' ' . $family);
+            } elseif ($source === 'openalex') {
+                $displayName = $auth['author']['display_name'] ?? '';
+                $authorName  = strtolower(preg_replace('/[^a-z0-9 ]/i', '', $displayName));
+            } else {
+                continue;
+            }
+
+            $authorWords = array_filter(explode(' ', $authorName));
+            $matches = 0;
+            foreach ($userWords as $uw) {
+                foreach ($authorWords as $aw) {
+                    if (strlen($uw) >= 2 && strlen($aw) >= 2 && ($uw === $aw || str_starts_with($aw, $uw) || str_starts_with($uw, $aw))) {
+                        $matches++;
+                        break;
+                    } elseif ((strlen($aw) === 1 && str_starts_with($uw, $aw)) || (strlen($uw) === 1 && str_starts_with($aw, $uw))) {
+                        $matches++;
+                        break;
+                    }
+                }
+            }
+
+            if ($matches >= 2 || (count($userWords) === 1 && $matches === 1)) {
+                return $idx;
+            }
+        }
+
+        return -1;
     }
 
     private function matchAuthorName($userFullName, $authorGiven, $authorFamily)
