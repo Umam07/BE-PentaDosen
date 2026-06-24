@@ -156,27 +156,52 @@ class ScopusController extends Controller
                             $entryMetadata = $sourceData['serial-metadata-response']['entry'][0] ?? null;
                             if ($entryMetadata && isset($entryMetadata['citeScoreYearInfoList']['citeScoreYearInfo'])) {
                                 $yearInfos = $entryMetadata['citeScoreYearInfoList']['citeScoreYearInfo'];
-                                $latestYearInfo = $yearInfos[0] ?? null;
-                                if ($latestYearInfo && isset($latestYearInfo['citeScoreSubjectAreaList']['citeScoreSubjectArea'])) {
-                                    $subjAreas = $latestYearInfo['citeScoreSubjectAreaList']['citeScoreSubjectArea'];
-                                    $maxPercentile = 0;
-                                    foreach ($subjAreas as $sa) {
-                                        $percentile = (int)($sa['percentile'] ?? 0);
-                                        if ($percentile > $maxPercentile) {
-                                            $maxPercentile = $percentile;
+                                
+                                if (isset($yearInfos['citeScoreInformationList'])) {
+                                    $yearInfos = [$yearInfos];
+                                }
+
+                                $maxPercentile = 0;
+                                foreach ($yearInfos as $yearInfo) {
+                                    if (isset($yearInfo['citeScoreInformationList'])) {
+                                        $infoListWrapper = $yearInfo['citeScoreInformationList'];
+                                        if (isset($infoListWrapper['citeScoreInfo'])) {
+                                            $infoListWrapper = [$infoListWrapper];
+                                        }
+                                        
+                                        foreach ($infoListWrapper as $wrapper) {
+                                            $citeScoreInfo = $wrapper['citeScoreInfo'] ?? [];
+                                            if (isset($citeScoreInfo['citeScoreSubjectRank'])) {
+                                                $citeScoreInfo = [$citeScoreInfo];
+                                            }
+                                            
+                                            foreach ($citeScoreInfo as $info) {
+                                                $ranks = $info['citeScoreSubjectRank'] ?? [];
+                                                if (isset($ranks['percentile'])) {
+                                                    $ranks = [$ranks];
+                                                }
+                                                
+                                                foreach ($ranks as $r) {
+                                                    $percentile = (int)($r['percentile'] ?? 0);
+                                                    if ($percentile > $maxPercentile) {
+                                                        $maxPercentile = $percentile;
+                                                    }
+                                                }
+                                            }
                                         }
                                     }
-                                    if ($maxPercentile >= 75) {
-                                        $quartile = 'Q1';
-                                    } elseif ($maxPercentile >= 50) {
-                                        $quartile = 'Q2';
-                                    } elseif ($maxPercentile >= 25) {
-                                        $quartile = 'Q3';
-                                    } elseif ($maxPercentile > 0) {
-                                        $quartile = 'Q4';
-                                    }
                                 }
-                             }
+
+                                if ($maxPercentile >= 75) {
+                                    $quartile = 'Q1';
+                                } elseif ($maxPercentile >= 50) {
+                                    $quartile = 'Q2';
+                                } elseif ($maxPercentile >= 25) {
+                                    $quartile = 'Q3';
+                                } elseif ($maxPercentile > 0) {
+                                    $quartile = 'Q4';
+                                }
+                            }
                         }
                     } catch (\Exception $e) {
                         // Silently ignore API lookup failures
@@ -526,6 +551,103 @@ class ScopusController extends Controller
         });
 
         return response()->json($cached['data'], $cached['status']);
+    }
+
+    public function updateQuartile(Request $request, $id)
+    {
+        $request->validate([
+            'quartile' => 'nullable|string|in:Q1,Q2,Q3,Q4,None'
+        ]);
+
+        $pub = \App\Models\ScopusPublication::findOrFail($id);
+        $user = $pub->user;
+        $newQuartile = $request->quartile === 'None' ? null : $request->quartile;
+
+        DB::transaction(function () use ($pub, $user, $newQuartile) {
+            $pub->quartile = $newQuartile;
+            
+            // Recalculate points using the SINTA PointWeights
+            $weights = \App\Models\PointWeight::pluck('weight_value', 'category')->toArray();
+            $role = $pub->author_role;
+            $totalAuthors = (int)$pub->total_authors;
+            $isHyperauthor = (bool)$pub->is_hyperauthor;
+            $subtype = $pub->subtype;
+            
+            $isArticle = true;
+            if ($subtype && strtolower($subtype) !== 'ar' && strtolower($subtype) !== 'article') {
+                $isArticle = false;
+            }
+
+            $q = $newQuartile ?: 'None';
+            $awardedPoints = 0.0;
+
+            if ($isArticle) {
+                if ($isHyperauthor) {
+                    if ($role === 'Single Author') {
+                        $awardedPoints = (double)($weights['Scopus Article (Single Author)'] ?? 40.0);
+                    } elseif ($role === 'First Author') {
+                        $awardedPoints = (double)($weights['Scopus Article Hyperauthor (First Author)'] ?? 24.0);
+                    } else {
+                        $awardedPoints = (double)($weights['Scopus Article Hyperauthor (Member Author)'] ?? 1.0);
+                    }
+                } elseif ($role === 'Single Author') {
+                    $awardedPoints = (double)($weights['Scopus Article (Single Author)'] ?? 40.0);
+                } elseif ($role === 'First Author') {
+                    $categoryKey = "Scopus Article {$q} (First Author)";
+                    if ($q === 'None') {
+                        $categoryKey = 'Scopus Article Q4 (First Author)';
+                    }
+                    $awardedPoints = (double)($weights[$categoryKey] ?? ($q === 'Q1' ? 24.0 : ($q === 'Q2' ? 22.0 : ($q === 'Q3' ? 20.0 : 18.0))));
+                } else {
+                    // Member Author
+                    $categoryKey = "Scopus Article {$q} (Member Author)";
+                    if ($q === 'None') {
+                        $categoryKey = 'Scopus Article Q4 (Member Author)';
+                    }
+                    $memberPool = (double)($weights[$categoryKey] ?? ($q === 'Q1' ? 16.0 : ($q === 'Q2' ? 14.0 : ($q === 'Q3' ? 12.0 : 10.0))));
+                    $memberCount = max(1, $totalAuthors - 1);
+                    $awardedPoints = $memberPool / $memberCount;
+                }
+            } else {
+                // Non-Article
+                if ($role === 'Single Author') {
+                    $awardedPoints = (double)($weights['Scopus Non Article (Single Author)'] ?? 30.0);
+                } elseif ($role === 'First Author') {
+                    $awardedPoints = (double)($weights['Scopus Non Article (First Author)'] ?? 18.0);
+                } else {
+                    $memberPool = (double)($weights['Scopus Non Article (Member Author)'] ?? 12.0);
+                    $memberCount = max(1, $totalAuthors - 1);
+                    $awardedPoints = $memberPool / $memberCount;
+                }
+            }
+
+            $pub->awarded_points = round($awardedPoints, 2);
+            $pub->save();
+
+            // Update corresponding Document in documents table if it exists
+            $doc = \App\Models\Document::where('user_id', $user->id)
+                ->where('title', $pub->title)
+                ->first();
+
+            if ($doc) {
+                $pointDiff = $pub->awarded_points - $doc->awarded_points;
+                $doc->update([
+                    'awarded_points' => $pub->awarded_points,
+                    'quartile'       => $newQuartile,
+                ]);
+                if ($pointDiff != 0) {
+                    $user->increment('total_kpi_points', $pointDiff);
+                }
+            }
+        });
+
+        if (Cache::supportsTags()) {
+            Cache::tags(['stats', 'leaderboard', 'lecturers'])->flush();
+        } else {
+            Cache::flush();
+        }
+
+        return response()->json(['success' => true, 'message' => 'Quartile and points updated successfully', 'publication' => $pub]);
     }
 
     /**

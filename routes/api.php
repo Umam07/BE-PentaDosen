@@ -29,6 +29,7 @@ Route::middleware(['throttle:api'])->group(function () {
     Route::post('/users/{id}/scopus', [ScopusController::class, 'updateScopusId']);
     Route::post('/users/{id}/sync-scopus', [ScopusController::class, 'sync'])->middleware('throttle:3,1');
     Route::get('/scopus/check/{scopus_id}', [ScopusController::class, 'checkId']);
+    Route::put('/scopus-publications/{id}/quartile', [ScopusController::class, 'updateQuartile']);
     
     Route::post('/documents', [DocumentController::class, 'upload']);
     Route::post('/documents/{id}/upload-pdf', [DocumentController::class, 'uploadPdf']);
