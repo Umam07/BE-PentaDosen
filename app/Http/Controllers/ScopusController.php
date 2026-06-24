@@ -93,6 +93,9 @@ class ScopusController extends Controller
             // Clear old publications
             $user->scopusPublications()->delete();
 
+            // Load point weights dynamically from database
+            $weights = \App\Models\PointWeight::pluck('weight_value', 'category')->toArray();
+
             // KPI Active period
             $kpiPeriodStart = \Carbon\Carbon::parse('2025-01-01');
             $kpiPeriodEnd   = \Carbon\Carbon::parse('2027-12-31');
@@ -173,7 +176,7 @@ class ScopusController extends Controller
                                         $quartile = 'Q4';
                                     }
                                 }
-                            }
+                             }
                         }
                     } catch (\Exception $e) {
                         // Silently ignore API lookup failures
@@ -277,11 +280,13 @@ class ScopusController extends Controller
                     $totalAuthors = 1; // At minimum we know at least 1 author
                     if ($this->matchCreatorName($user->name, $entry['dc:creator'])) {
                         $authorRole = 'First Author';
+                        $userIndex = 0;
                     }
                 } elseif ($authorRole === 'Member Author' && $totalAuthors > 0 && isset($entry['dc:creator'])) {
                     // If we couldn't positively ID user in the list but dc:creator matches, they are first
                     if ($this->matchCreatorName($user->name, $entry['dc:creator'])) {
                         $authorRole = 'First Author';
+                        $userIndex = 0;
                     }
                 }
 
@@ -296,35 +301,56 @@ class ScopusController extends Controller
                     $isArticle = false;
                 }
 
-                // 4. Calculate points using 60/40 schema + Quartile
-                //    Quartile determines max base points for Articles:
-                //      Q1 = 40 pts, Q2 = 30 pts, Q3 = 20 pts, Q4/None = 10 pts
-                //    Non-Article max = 30 pts (flat, no quartile)
-                //    Single Author  = 100% of max
-                //    First Author   = 60%  of max
-                //    Member Author  = 40%  of max ÷ number of member authors
-                $quartileMax = ['Q1' => 40, 'Q2' => 30, 'Q3' => 20, 'Q4' => 10];
-                $maxPoints = $isArticle
-                    ? ($quartileMax[$quartile] ?? 10)
-                    : 30;
+                // 4. Calculate points using the new SINTA PointWeights
+                $q = in_array($quartile, ['Q1', 'Q2', 'Q3', 'Q4']) ? $quartile : 'None';
+                $awardedPoints = 0.0;
 
-                if ($isHyperauthor) {
-                    // Hyperauthor: flat reduced points
-                    if ($authorRole === 'Single Author') {
-                        $awardedPoints = $maxPoints;
+                if ($isArticle) {
+                    if ($isHyperauthor) {
+                        if ($authorRole === 'Single Author') {
+                            $awardedPoints = (double)($weights['Scopus Article (Single Author)'] ?? 40.0);
+                        } elseif ($authorRole === 'First Author') {
+                            $awardedPoints = (double)($weights['Scopus Article Hyperauthor (First Author)'] ?? 24.0);
+                        } else {
+                            $awardedPoints = (double)($weights['Scopus Article Hyperauthor (Member Author)'] ?? 1.0);
+                        }
+                    } elseif ($authorRole === 'Single Author') {
+                        $awardedPoints = (double)($weights['Scopus Article (Single Author)'] ?? 40.0);
                     } elseif ($authorRole === 'First Author') {
-                        $awardedPoints = 2; // Hyperauthor First = 2 pts
+                        $categoryKey = "Scopus Article {$q} (First Author)";
+                        if ($q === 'None') {
+                            $categoryKey = 'Scopus Article Q4 (First Author)'; // fallback uses Q4
+                        }
+                        $awardedPoints = (double)($weights[$categoryKey] ?? ($q === 'Q1' ? 24.0 : ($q === 'Q2' ? 22.0 : ($q === 'Q3' ? 20.0 : 18.0))));
                     } else {
-                        $awardedPoints = 0.5; // Hyperauthor Member = 0.5 pts
+                        // Member Author
+                        $categoryKey = "Scopus Article {$q} (Member Author)";
+                        if ($q === 'None') {
+                            $categoryKey = 'Scopus Article Q4 (Member Author)'; // fallback uses Q4
+                        }
+                        $memberPool = (double)($weights[$categoryKey] ?? ($q === 'Q1' ? 16.0 : ($q === 'Q2' ? 14.0 : ($q === 'Q3' ? 12.0 : 10.0))));
+                        $memberCount = max(1, $totalAuthors - 1);
+                        $awardedPoints = $memberPool / $memberCount;
                     }
-                } elseif ($authorRole === 'Single Author') {
-                    $awardedPoints = $maxPoints; // 100%
-                } elseif ($authorRole === 'First Author') {
-                    $awardedPoints = $maxPoints * 0.60; // 60%
                 } else {
-                    // Member Author: 40% divided equally among all members
-                    $memberCount   = max(1, $totalAuthors - 1);
-                    $awardedPoints = ($maxPoints * 0.40) / $memberCount;
+                    // Non-Article
+                    if ($authorRole === 'Single Author') {
+                        $awardedPoints = (double)($weights['Scopus Non Article (Single Author)'] ?? 30.0);
+                    } elseif ($authorRole === 'First Author') {
+                        $awardedPoints = (double)($weights['Scopus Non Article (First Author)'] ?? 18.0);
+                    } else {
+                        $memberPool = (double)($weights['Scopus Non Article (Member Author)'] ?? 12.0);
+                        $memberCount = max(1, $totalAuthors - 1);
+                        $awardedPoints = $memberPool / $memberCount;
+                    }
+                }
+
+                // Determine 1-based author order
+                $authorOrder = null;
+                if ($userIndex !== -1) {
+                    $authorOrder = $userIndex + 1;
+                } elseif ($authorRole === 'First Author' || $authorRole === 'Single Author') {
+                    $authorOrder = 1;
                 }
 
                 $citations = (int)($entry['citedby-count'] ?? 0);
@@ -339,6 +365,7 @@ class ScopusController extends Controller
                     'doi'           => $entry['prism:doi'] ?? null,
                     'quartile'      => $quartile === 'None' ? null : $quartile,
                     'author_role'   => $authorRole,
+                    'author_order'  => $authorOrder,
                     'is_hyperauthor' => $isHyperauthor,
                     'awarded_points' => round($awardedPoints, 2),
                     'subtype'       => $subtype ?: ($subtypeDescription ?: null),
@@ -363,6 +390,7 @@ class ScopusController extends Controller
                                 'awarded_points' => round($awardedPoints, 2),
                                 'quartile'       => $quartile === 'None' ? null : $quartile,
                                 'author_role'    => $authorRole,
+                                'author_order'   => $authorOrder,
                                 'is_hyperauthor' => $isHyperauthor,
                             ]);
                             if ($pointDiff != 0) {
@@ -381,6 +409,7 @@ class ScopusController extends Controller
                                 'awarded_points'      => round($awardedPoints, 2),
                                 'quartile'            => $quartile === 'None' ? null : $quartile,
                                 'author_role'         => $authorRole,
+                                'author_order'        => $authorOrder,
                                 'is_hyperauthor'      => $isHyperauthor,
                             ]);
                             if ($awardedPoints > 0) {
