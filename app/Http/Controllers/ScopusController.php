@@ -79,7 +79,14 @@ class ScopusController extends Controller
             }
         }
 
-        DB::transaction(function () use ($user, $documentCount, $citationCount, $hIndex, $entries, $apiKey) {
+        // Fetch existing publications to preserve corresponding status before deletion
+        $existingPubs = \App\Models\ScopusPublication::where('user_id', $user->id)
+            ->get()
+            ->keyBy(function ($p) {
+                return strtolower(trim($p->title));
+            });
+
+        DB::transaction(function () use ($user, $documentCount, $citationCount, $hIndex, $entries, $apiKey, $existingPubs) {
             ScopusData::updateOrCreate(
                 ['user_id' => $user->id],
                 [
@@ -326,57 +333,39 @@ class ScopusController extends Controller
                     $isArticle = false;
                 }
 
-                // 4. Calculate points using the new SINTA PointWeights
-                $q = in_array($quartile, ['Q1', 'Q2', 'Q3', 'Q4']) ? $quartile : 'None';
-                $awardedPoints = 0.0;
-
-                if ($isArticle) {
-                    if ($isHyperauthor) {
-                        if ($authorRole === 'Single Author') {
-                            $awardedPoints = (double)($weights['Scopus Article (Single Author)'] ?? 40.0);
-                        } elseif ($authorRole === 'First Author') {
-                            $awardedPoints = (double)($weights['Scopus Article Hyperauthor (First Author)'] ?? 24.0);
-                        } else {
-                            $awardedPoints = (double)($weights['Scopus Article Hyperauthor (Member Author)'] ?? 1.0);
-                        }
-                    } elseif ($authorRole === 'Single Author') {
-                        $awardedPoints = (double)($weights['Scopus Article (Single Author)'] ?? 40.0);
-                    } elseif ($authorRole === 'First Author') {
-                        $categoryKey = "Scopus Article {$q} (First Author)";
-                        if ($q === 'None') {
-                            $categoryKey = 'Scopus Article Q4 (First Author)'; // fallback uses Q4
-                        }
-                        $awardedPoints = (double)($weights[$categoryKey] ?? ($q === 'Q1' ? 24.0 : ($q === 'Q2' ? 22.0 : ($q === 'Q3' ? 20.0 : 18.0))));
-                    } else {
-                        // Member Author
-                        $categoryKey = "Scopus Article {$q} (Member Author)";
-                        if ($q === 'None') {
-                            $categoryKey = 'Scopus Article Q4 (Member Author)'; // fallback uses Q4
-                        }
-                        $memberPool = (double)($weights[$categoryKey] ?? ($q === 'Q1' ? 16.0 : ($q === 'Q2' ? 14.0 : ($q === 'Q3' ? 12.0 : 10.0))));
-                        $memberCount = max(1, $totalAuthors - 1);
-                        $awardedPoints = $memberPool / $memberCount;
-                    }
-                } else {
-                    // Non-Article
-                    if ($authorRole === 'Single Author') {
-                        $awardedPoints = (double)($weights['Scopus Non Article (Single Author)'] ?? 30.0);
-                    } elseif ($authorRole === 'First Author') {
-                        $awardedPoints = (double)($weights['Scopus Non Article (First Author)'] ?? 18.0);
-                    } else {
-                        $memberPool = (double)($weights['Scopus Non Article (Member Author)'] ?? 12.0);
-                        $memberCount = max(1, $totalAuthors - 1);
-                        $awardedPoints = $memberPool / $memberCount;
-                    }
-                }
-
                 // Determine 1-based author order
                 $authorOrder = null;
                 if ($userIndex !== -1) {
                     $authorOrder = $userIndex + 1;
                 } elseif ($authorRole === 'First Author' || $authorRole === 'Single Author') {
                     $authorOrder = 1;
+                } else {
+                    $authorOrder = 2; // default member order
                 }
+
+                // 4. Preserve or default corresponding status
+                $normTitle = strtolower(trim($entry['dc:title']));
+                $existing = $existingPubs[$normTitle] ?? null;
+
+                if ($existing) {
+                    $isCorresponding = (bool)$existing->is_corresponding;
+                    $isCorrespondingConfirmed = (bool)$existing->is_corresponding_confirmed;
+                } else {
+                    $isCorresponding = ($authorRole === 'First Author' || $authorRole === 'Single Author' || $authorOrder === 1);
+                    $isCorrespondingConfirmed = false;
+                }
+
+                // 5. Calculate points dynamically using Model helper
+                $tempPub = new \App\Models\ScopusPublication([
+                    'author_role' => $authorRole,
+                    'total_authors' => $totalAuthors,
+                    'author_order' => $authorOrder,
+                    'is_hyperauthor' => $isHyperauthor,
+                    'quartile' => $quartile === 'None' ? null : $quartile,
+                    'subtype' => $subtype ?: ($subtypeDescription ?: null),
+                    'is_corresponding' => $isCorresponding,
+                ]);
+                $awardedPoints = $tempPub->calculatePoints($weights);
 
                 $citations = (int)($entry['citedby-count'] ?? 0);
 
@@ -391,6 +380,8 @@ class ScopusController extends Controller
                     'quartile'      => $quartile === 'None' ? null : $quartile,
                     'author_role'   => $authorRole,
                     'author_order'  => $authorOrder,
+                    'is_corresponding' => $isCorresponding,
+                    'is_corresponding_confirmed' => $isCorrespondingConfirmed,
                     'is_hyperauthor' => $isHyperauthor,
                     'awarded_points' => round($awardedPoints, 2),
                     'subtype'       => $subtype ?: ($subtypeDescription ?: null),
@@ -417,6 +408,8 @@ class ScopusController extends Controller
                                 'author_role'    => $authorRole,
                                 'author_order'   => $authorOrder,
                                 'is_hyperauthor' => $isHyperauthor,
+                                'is_corresponding' => $isCorresponding,
+                                'is_corresponding_confirmed' => $isCorrespondingConfirmed,
                             ]);
                             if ($pointDiff != 0) {
                                 $user->increment('total_kpi_points', $pointDiff);
@@ -436,6 +429,8 @@ class ScopusController extends Controller
                                 'author_role'         => $authorRole,
                                 'author_order'        => $authorOrder,
                                 'is_hyperauthor'      => $isHyperauthor,
+                                'is_corresponding'    => $isCorresponding,
+                                'is_corresponding_confirmed' => $isCorrespondingConfirmed,
                             ]);
                             if ($awardedPoints > 0) {
                                 $user->increment('total_kpi_points', $awardedPoints);
@@ -566,62 +561,9 @@ class ScopusController extends Controller
         DB::transaction(function () use ($pub, $user, $newQuartile) {
             $pub->quartile = $newQuartile;
             
-            // Recalculate points using the SINTA PointWeights
-            $weights = \App\Models\PointWeight::pluck('weight_value', 'category')->toArray();
-            $role = $pub->author_role;
-            $totalAuthors = (int)$pub->total_authors;
-            $isHyperauthor = (bool)$pub->is_hyperauthor;
-            $subtype = $pub->subtype;
-            
-            $isArticle = true;
-            if ($subtype && strtolower($subtype) !== 'ar' && strtolower($subtype) !== 'article') {
-                $isArticle = false;
-            }
-
-            $q = $newQuartile ?: 'None';
-            $awardedPoints = 0.0;
-
-            if ($isArticle) {
-                if ($isHyperauthor) {
-                    if ($role === 'Single Author') {
-                        $awardedPoints = (double)($weights['Scopus Article (Single Author)'] ?? 40.0);
-                    } elseif ($role === 'First Author') {
-                        $awardedPoints = (double)($weights['Scopus Article Hyperauthor (First Author)'] ?? 24.0);
-                    } else {
-                        $awardedPoints = (double)($weights['Scopus Article Hyperauthor (Member Author)'] ?? 1.0);
-                    }
-                } elseif ($role === 'Single Author') {
-                    $awardedPoints = (double)($weights['Scopus Article (Single Author)'] ?? 40.0);
-                } elseif ($role === 'First Author') {
-                    $categoryKey = "Scopus Article {$q} (First Author)";
-                    if ($q === 'None') {
-                        $categoryKey = 'Scopus Article Q4 (First Author)';
-                    }
-                    $awardedPoints = (double)($weights[$categoryKey] ?? ($q === 'Q1' ? 24.0 : ($q === 'Q2' ? 22.0 : ($q === 'Q3' ? 20.0 : 18.0))));
-                } else {
-                    // Member Author
-                    $categoryKey = "Scopus Article {$q} (Member Author)";
-                    if ($q === 'None') {
-                        $categoryKey = 'Scopus Article Q4 (Member Author)';
-                    }
-                    $memberPool = (double)($weights[$categoryKey] ?? ($q === 'Q1' ? 16.0 : ($q === 'Q2' ? 14.0 : ($q === 'Q3' ? 12.0 : 10.0))));
-                    $memberCount = max(1, $totalAuthors - 1);
-                    $awardedPoints = $memberPool / $memberCount;
-                }
-            } else {
-                // Non-Article
-                if ($role === 'Single Author') {
-                    $awardedPoints = (double)($weights['Scopus Non Article (Single Author)'] ?? 30.0);
-                } elseif ($role === 'First Author') {
-                    $awardedPoints = (double)($weights['Scopus Non Article (First Author)'] ?? 18.0);
-                } else {
-                    $memberPool = (double)($weights['Scopus Non Article (Member Author)'] ?? 12.0);
-                    $memberCount = max(1, $totalAuthors - 1);
-                    $awardedPoints = $memberPool / $memberCount;
-                }
-            }
-
-            $pub->awarded_points = round($awardedPoints, 2);
+            // Recalculate points using the model helper
+            $points = $pub->calculatePoints();
+            $pub->awarded_points = round($points, 2);
             $pub->save();
 
             // Update corresponding Document in documents table if it exists
@@ -648,6 +590,55 @@ class ScopusController extends Controller
         }
 
         return response()->json(['success' => true, 'message' => 'Quartile and points updated successfully', 'publication' => $pub]);
+    }
+
+    public function updateCorresponding(Request $request, $id)
+    {
+        $request->validate([
+            'is_corresponding' => 'required|boolean'
+        ]);
+
+        $pub = \App\Models\ScopusPublication::findOrFail($id);
+        $user = $pub->user;
+
+        DB::transaction(function () use ($pub, $user, $request) {
+            $pub->is_corresponding = $request->is_corresponding;
+            $pub->is_corresponding_confirmed = true;
+            
+            // Recalculate points using the model helper
+            $points = $pub->calculatePoints();
+            $pub->awarded_points = round($points, 2);
+            $pub->save();
+
+            // Update corresponding Document in documents table if it exists
+            $doc = \App\Models\Document::where('user_id', $user->id)
+                ->where('title', $pub->title)
+                ->first();
+
+            if ($doc) {
+                $pointDiff = $pub->awarded_points - $doc->awarded_points;
+                $doc->update([
+                    'awarded_points' => $pub->awarded_points,
+                    'is_corresponding' => $pub->is_corresponding,
+                    'is_corresponding_confirmed' => $pub->is_corresponding_confirmed,
+                ]);
+                if ($pointDiff != 0) {
+                    $user->increment('total_kpi_points', $pointDiff);
+                }
+            }
+        });
+
+        if (Cache::supportsTags()) {
+            Cache::tags(['stats', 'leaderboard', 'lecturers'])->flush();
+        } else {
+            Cache::flush();
+        }
+
+        return response()->json([
+            'success' => true, 
+            'message' => 'Corresponding status and points updated successfully', 
+            'publication' => $pub
+        ]);
     }
 
     /**

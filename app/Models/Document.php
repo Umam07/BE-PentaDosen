@@ -21,12 +21,17 @@ class Document extends Model
         'quartile',
         'author_role',
         'is_hyperauthor',
+        'author_order',
+        'is_corresponding',
+        'is_corresponding_confirmed',
     ];
 
     protected $casts = [
         'published_at' => 'date',
         'is_kpi_counted' => 'boolean',
         'is_hyperauthor' => 'boolean',
+        'is_corresponding' => 'boolean',
+        'is_corresponding_confirmed' => 'boolean',
     ];
 
     public function user()
