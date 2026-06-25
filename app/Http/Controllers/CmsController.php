@@ -258,6 +258,7 @@ class CmsController extends Controller
     {
         $search = $request->query('search');
         $roleFilter = $request->query('role');
+        $perPage = $request->query('per_page', 20);
 
         $users = User::when($search, function ($query) use ($search) {
                 $query->where(function ($q) use ($search) {
@@ -270,7 +271,7 @@ class CmsController extends Controller
                 $query->where('role', $roleFilter);
             })
             ->orderBy('name', 'asc')
-            ->paginate(20);
+            ->paginate($perPage);
 
         return response()->json($users);
     }
