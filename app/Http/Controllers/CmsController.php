@@ -177,13 +177,21 @@ class CmsController extends Controller
             'answer' => 'required|string',
             'category' => 'required|string',
             'order_index' => 'integer',
+            'file' => 'nullable|file|mimes:pdf|max:10240',
         ]);
+
+        $fileUrl = null;
+        if ($request->hasFile('file')) {
+            $path = $request->file('file')->store('faqs', 'public');
+            $fileUrl = Storage::url($path);
+        }
 
         $faq = Faq::create([
             'question' => $request->question,
             'answer' => $request->answer,
             'category' => $request->category,
             'order_index' => $request->order_index ?? 0,
+            'file_url' => $fileUrl,
         ]);
 
         return response()->json(['success' => true, 'faq' => $faq, 'message' => 'FAQ berhasil ditambahkan.']);
@@ -198,9 +206,34 @@ class CmsController extends Controller
             'answer' => 'required|string',
             'category' => 'required|string',
             'order_index' => 'integer',
+            'file' => 'nullable|file|mimes:pdf|max:10240',
         ]);
 
-        $faq->update($request->only(['question', 'answer', 'category', 'order_index']));
+        $faq->question = $request->question;
+        $faq->answer = $request->answer;
+        $faq->category = $request->category;
+        $faq->order_index = $request->order_index ?? 0;
+
+        // Check if PDF removal is requested
+        if ($request->input('remove_file') === 'true' || $request->input('remove_file') === true) {
+            if ($faq->file_url && $faq->file_url !== '-') {
+                $relativePath = str_replace('/storage/', '', $faq->file_url);
+                Storage::disk('public')->delete($relativePath);
+            }
+            $faq->file_url = null;
+        }
+
+        // Handle new file upload
+        if ($request->hasFile('file')) {
+            if ($faq->file_url && $faq->file_url !== '-') {
+                $relativePath = str_replace('/storage/', '', $faq->file_url);
+                Storage::disk('public')->delete($relativePath);
+            }
+            $path = $request->file('file')->store('faqs', 'public');
+            $faq->file_url = Storage::url($path);
+        }
+
+        $faq->save();
 
         return response()->json(['success' => true, 'faq' => $faq, 'message' => 'FAQ berhasil diperbarui.']);
     }
@@ -208,6 +241,13 @@ class CmsController extends Controller
     public function destroyFaq($id)
     {
         $faq = Faq::findOrFail($id);
+
+        // Delete associated file if exists
+        if ($faq->file_url && $faq->file_url !== '-') {
+            $relativePath = str_replace('/storage/', '', $faq->file_url);
+            Storage::disk('public')->delete($relativePath);
+        }
+
         $faq->delete();
 
         return response()->json(['success' => true, 'message' => 'FAQ berhasil dihapus.']);

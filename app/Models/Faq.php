@@ -6,5 +6,5 @@ use Illuminate\Database\Eloquent\Model;
 
 class Faq extends Model
 {
-    protected $fillable = ['question', 'answer', 'category', 'order_index'];
+    protected $fillable = ['question', 'answer', 'category', 'order_index', 'file_url'];
 }
