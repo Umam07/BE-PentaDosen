@@ -390,59 +390,23 @@ class ScopusController extends Controller
                     'updated_at'    => now(),
                 ];
 
-                // Add to Document table automatically if within KPI period
-                if ($year) {
-                    $publishedAt = \Carbon\Carbon::createFromDate($year, 1, 1);
-                    $isKpi = $publishedAt->between($kpiPeriodStart, $kpiPeriodEnd);
-
-                    if ($isKpi) {
-                        $doc = \App\Models\Document::where('user_id', $user->id)
-                            ->where('title', $entry['dc:title'])
-                            ->first();
-
-                        if ($doc) {
-                            $pointDiff = $awardedPoints - $doc->awarded_points;
-                            $doc->update([
-                                'awarded_points' => round($awardedPoints, 2),
-                                'quartile'       => $quartile === 'None' ? null : $quartile,
-                                'author_role'    => $authorRole,
-                                'author_order'   => $authorOrder,
-                                'is_hyperauthor' => $isHyperauthor,
-                                'is_corresponding' => $isCorresponding,
-                                'is_corresponding_confirmed' => $isCorrespondingConfirmed,
-                            ]);
-                            if ($pointDiff != 0) {
-                                $user->increment('total_kpi_points', $pointDiff);
-                            }
-                        } else {
-                            $doc = \App\Models\Document::create([
-                                'user_id'             => $user->id,
-                                'title'               => $entry['dc:title'],
-                                'category'            => 'Jurnal Internasional',
-                                'file_url'            => '',
-                                'published_at'        => $publishedAt->format('Y-m-d'),
-                                'is_kpi_counted'      => true,
-                                'accreditation_period' => $kpiPeriodLabel,
-                                'status'              => 'Approved',
-                                'awarded_points'      => round($awardedPoints, 2),
-                                'quartile'            => $quartile === 'None' ? null : $quartile,
-                                'author_role'         => $authorRole,
-                                'author_order'        => $authorOrder,
-                                'is_hyperauthor'      => $isHyperauthor,
-                                'is_corresponding'    => $isCorresponding,
-                                'is_corresponding_confirmed' => $isCorrespondingConfirmed,
-                            ]);
-                            if ($awardedPoints > 0) {
-                                $user->increment('total_kpi_points', $awardedPoints);
-                            }
-                        }
-                    }
-                }
             }
             
             if (!empty($publicationsToInsert)) {
                 $user->scopusPublications()->insert($publicationsToInsert);
             }
+
+            // Recalculate total kpi points
+            $totalDocPoints = \App\Models\Document::where('user_id', $user->id)
+                ->where('status', 'Approved')
+                ->sum('awarded_points');
+            $totalPenPoints = \App\Models\Penelitian::where('user_id', $user->id)
+                ->where('status', 'Approved')
+                ->sum('awarded_points');
+            $totalScopusPoints = \App\Models\ScopusPublication::where('user_id', $user->id)
+                ->sum('awarded_points');
+
+            $user->update(['total_kpi_points' => $totalDocPoints + $totalPenPoints + $totalScopusPoints]);
         });
 
         \App\Models\ActivityLog::log($user->id, 'Sync Scopus', 'User melakukan sinkronisasi data Scopus');
@@ -486,8 +450,10 @@ class ScopusController extends Controller
                 $totalPenPoints = \App\Models\Penelitian::where('user_id', $user->id)
                     ->where('status', 'Approved')
                     ->sum('awarded_points');
+                $totalScopusPoints = \App\Models\ScopusPublication::where('user_id', $user->id)
+                    ->sum('awarded_points');
 
-                $user->update(['total_kpi_points' => $totalDocPoints + $totalPenPoints]);
+                $user->update(['total_kpi_points' => $totalDocPoints + $totalPenPoints + $totalScopusPoints]);
             }
         });
 
@@ -559,6 +525,7 @@ class ScopusController extends Controller
         $newQuartile = $request->quartile === 'None' ? null : $request->quartile;
 
         DB::transaction(function () use ($pub, $user, $newQuartile) {
+            $oldPoints = $pub->awarded_points;
             $pub->quartile = $newQuartile;
             
             // Recalculate points using the model helper
@@ -566,20 +533,9 @@ class ScopusController extends Controller
             $pub->awarded_points = round($points, 2);
             $pub->save();
 
-            // Update corresponding Document in documents table if it exists
-            $doc = \App\Models\Document::where('user_id', $user->id)
-                ->where('title', $pub->title)
-                ->first();
-
-            if ($doc) {
-                $pointDiff = $pub->awarded_points - $doc->awarded_points;
-                $doc->update([
-                    'awarded_points' => $pub->awarded_points,
-                    'quartile'       => $newQuartile,
-                ]);
-                if ($pointDiff != 0) {
-                    $user->increment('total_kpi_points', $pointDiff);
-                }
+            $pointDiff = $pub->awarded_points - $oldPoints;
+            if ($pointDiff != 0) {
+                $user->increment('total_kpi_points', $pointDiff);
             }
         });
 
@@ -602,6 +558,7 @@ class ScopusController extends Controller
         $user = $pub->user;
 
         DB::transaction(function () use ($pub, $user, $request) {
+            $oldPoints = $pub->awarded_points;
             $pub->is_corresponding = $request->is_corresponding;
             $pub->is_corresponding_confirmed = true;
             
@@ -610,21 +567,9 @@ class ScopusController extends Controller
             $pub->awarded_points = round($points, 2);
             $pub->save();
 
-            // Update corresponding Document in documents table if it exists
-            $doc = \App\Models\Document::where('user_id', $user->id)
-                ->where('title', $pub->title)
-                ->first();
-
-            if ($doc) {
-                $pointDiff = $pub->awarded_points - $doc->awarded_points;
-                $doc->update([
-                    'awarded_points' => $pub->awarded_points,
-                    'is_corresponding' => $pub->is_corresponding,
-                    'is_corresponding_confirmed' => $pub->is_corresponding_confirmed,
-                ]);
-                if ($pointDiff != 0) {
-                    $user->increment('total_kpi_points', $pointDiff);
-                }
+            $pointDiff = $pub->awarded_points - $oldPoints;
+            if ($pointDiff != 0) {
+                $user->increment('total_kpi_points', $pointDiff);
             }
         });
 

@@ -307,14 +307,20 @@ class UserController extends Controller
             // KPI Score 3 Years (Current year and 2 previous years)
             $currentYear = now()->year;
             $threeYearsAgo = $currentYear - 2;
-            $kpiScore3Years = \App\Models\Document::where('status', 'Approved')
+             $kpiScore3YearsDocs = \App\Models\Document::where('status', 'Approved')
                 ->whereYear('published_at', '>=', $threeYearsAgo)
                 ->sum('awarded_points');
+             $kpiScore3YearsScopus = \App\Models\ScopusPublication::where('year', '>=', $threeYearsAgo)
+                ->sum('awarded_points');
+             $kpiScore3Years = $kpiScore3YearsDocs + $kpiScore3YearsScopus;
 
-            // KPI Score This Year
-            $kpiScoreThisYear = \App\Models\Document::where('status', 'Approved')
+             // KPI Score This Year
+             $kpiScoreThisYearDocs = \App\Models\Document::where('status', 'Approved')
                 ->whereYear('published_at', $currentYear)
                 ->sum('awarded_points');
+             $kpiScoreThisYearScopus = \App\Models\ScopusPublication::where('year', $currentYear)
+                ->sum('awarded_points');
+             $kpiScoreThisYear = $kpiScoreThisYearDocs + $kpiScoreThisYearScopus;
 
             $totalScholar = \App\Models\ScholarPublication::count();
             $totalScopus = \App\Models\ScopusPublication::count();

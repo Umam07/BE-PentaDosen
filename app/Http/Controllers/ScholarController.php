@@ -186,8 +186,10 @@ class ScholarController extends Controller
                 $totalPenPoints = \App\Models\Penelitian::where('user_id', $user->id)
                     ->where('status', 'Approved')
                     ->sum('awarded_points');
+                $totalScopusPoints = \App\Models\ScopusPublication::where('user_id', $user->id)
+                    ->sum('awarded_points');
 
-                $user->update(['total_kpi_points' => $totalDocPoints + $totalPenPoints]);
+                $user->update(['total_kpi_points' => $totalDocPoints + $totalPenPoints + $totalScopusPoints]);
             }
         });
 

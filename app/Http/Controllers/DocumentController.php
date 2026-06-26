@@ -175,9 +175,11 @@ class DocumentController extends Controller
                     $totalPenPoints = \App\Models\Penelitian::where('user_id', $request->user_id)
                         ->where('status', 'Approved')
                         ->sum('awarded_points');
+                    $totalScopusPoints = \App\Models\ScopusPublication::where('user_id', $request->user_id)
+                        ->sum('awarded_points');
 
                     $doc->user->update([
-                        'total_kpi_points' => $totalDocPoints + $totalPenPoints
+                        'total_kpi_points' => $totalDocPoints + $totalPenPoints + $totalScopusPoints
                     ]);
                 }
             }
@@ -482,8 +484,10 @@ class DocumentController extends Controller
             $totalPenPoints = \App\Models\Penelitian::where('user_id', $userId)
                 ->where('status', 'Approved')
                 ->sum('awarded_points');
+            $totalScopusPoints = \App\Models\ScopusPublication::where('user_id', $userId)
+                ->sum('awarded_points');
 
-            $user->update(['total_kpi_points' => $totalDocPoints + $totalPenPoints]);
+            $user->update(['total_kpi_points' => $totalDocPoints + $totalPenPoints + $totalScopusPoints]);
         }
 
         // Clear cache
