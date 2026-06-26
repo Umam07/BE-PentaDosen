@@ -40,6 +40,7 @@ class DocumentController extends Controller
             'published_at' => 'required|date',
             'doc_type' => 'required|in:kpi,arsip',
             'file' => 'nullable|file|mimes:pdf,jpg,jpeg,png|max:10240',
+            'is_corresponding' => 'nullable|boolean',
         ]);
 
         // Duplicate check
@@ -149,6 +150,7 @@ class DocumentController extends Controller
                     'is_kpi_counted' => $isKpi,
                     'accreditation_period' => $accreditationPeriod,
                     'status' => $autoVerified ? 'Approved' : 'Pending',
+                    'is_corresponding' => $request->boolean('is_corresponding', $existingDoc->is_corresponding),
                 ]);
                 $doc = $existingDoc;
             } else {
@@ -162,6 +164,7 @@ class DocumentController extends Controller
                     'accreditation_period' => $accreditationPeriod,
                     'status' => $autoVerified ? 'Approved' : 'Pending',
                     'awarded_points' => $awardedPoints,
+                    'is_corresponding' => $request->boolean('is_corresponding', false),
                 ]);
 
                 // If auto-verified, update user's total KPI points
@@ -366,6 +369,7 @@ class DocumentController extends Controller
             'published_at' => 'required|date',
             'doc_type'     => 'required|in:kpi,arsip',
             'file'         => 'nullable|file|mimes:pdf,jpg,jpeg,png|max:10240',
+            'is_corresponding' => 'nullable|boolean',
         ]);
 
         $publishedAt = Carbon::parse($request->published_at);
@@ -399,6 +403,7 @@ class DocumentController extends Controller
         $doc->published_at        = $publishedAt->format('Y-m-d');
         $doc->is_kpi_counted      = $isKpi;
         $doc->accreditation_period = $accreditationPeriod;
+        $doc->is_corresponding    = $request->boolean('is_corresponding', $doc->is_corresponding);
 
         if ($wasRejected) {
             $doc->status = 'Pending';
