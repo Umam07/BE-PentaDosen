@@ -199,7 +199,7 @@ class DocumentController extends Controller
         \App\Models\ActivityLog::log($request->user_id, $actionName, 'User mengajukan ' . $request->category . ': ' . $request->title);
 
         // === NOTIFICATIONS ===
-        // Notify admin fakultas & admin lppm about new document submission
+        // Notify admin fakultas about new document submission
         if (!$autoVerified) {
             $dosen = User::find($request->user_id);
             $dosenName = $dosen ? $dosen->name : 'Dosen';
@@ -212,18 +212,6 @@ class DocumentController extends Controller
             foreach ($adminFakultasList as $adminFakultas) {
                 Notification::send(
                     $adminFakultas->id,
-                    'doc_submitted',
-                    'Dokumen Baru Masuk',
-                    "Dosen {$dosenName} mengajukan dokumen baru: '{$request->title}' ({$request->category}).",
-                    ['doc_id' => $doc->id, 'user_id' => $request->user_id]
-                );
-            }
-
-            // Notify Admin LPPM
-            $adminLppmList = User::where('role', 'admin lppm')->get();
-            foreach ($adminLppmList as $adminLppm) {
-                Notification::send(
-                    $adminLppm->id,
                     'doc_submitted',
                     'Dokumen Baru Masuk',
                     "Dosen {$dosenName} mengajukan dokumen baru: '{$request->title}' ({$request->category}).",

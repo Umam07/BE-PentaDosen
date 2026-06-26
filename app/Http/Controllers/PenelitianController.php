@@ -84,7 +84,7 @@ class PenelitianController extends Controller
         \App\Models\ActivityLog::log($request->user_id, 'Submit Research', 'User mengajukan hasil penelitian: ' . $request->judul_penelitian);
 
         // === NOTIFICATIONS ===
-        // Notify Admin Fakultas & Admin LPPM about new research submission
+        // Notify Admin Fakultas about new research submission
         if ($status === 'Pending') {
             $dosen = User::find($request->user_id);
             $dosenName = $dosen ? $dosen->name : 'Dosen';
@@ -96,17 +96,6 @@ class PenelitianController extends Controller
             foreach ($adminFakultasList as $adminFakultas) {
                 Notification::send(
                     $adminFakultas->id,
-                    'penelitian_submitted',
-                    'Penelitian Baru Masuk',
-                    "Dosen {$dosenName} mengajukan penelitian baru: '{$request->judul_penelitian}'.",
-                    ['penelitian_id' => $penelitian->id]
-                );
-            }
-
-            $adminLppmList = User::where('role', 'admin lppm')->get();
-            foreach ($adminLppmList as $adminLppm) {
-                Notification::send(
-                    $adminLppm->id,
                     'penelitian_submitted',
                     'Penelitian Baru Masuk',
                     "Dosen {$dosenName} mengajukan penelitian baru: '{$request->judul_penelitian}'.",
