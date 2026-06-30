@@ -263,7 +263,7 @@ class AdminController extends Controller
                     ->sum('awarded_points');
 
                 $doc->user->update([
-                    'total_kpi_points' => $totalDocPoints + $totalPenPoints + $totalScopusPoints
+                    'total_kpi_points' => round($totalDocPoints + $totalPenPoints + $totalScopusPoints)
                 ]);
             });
         } else {

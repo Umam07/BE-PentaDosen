@@ -100,7 +100,7 @@ class ScholarController extends Controller
                 // GS DOCUMENT: 0.5
                 // GS DOCUMENT TERSITASI: 0.5 (if citations > 0)
                 // GS CITATION PER DOCUMENT NUMBER (CUT OFF = 500): 0.25 (citations * 0.25, max 500 citations)
-                $awardedPoints = 0.5 + ($citations > 0 ? 0.5 : 0) + min($citations, 500) * 0.25;
+                $awardedPoints = round(0.5 + ($citations > 0 ? 0.5 : 0) + min($citations, 500) * 0.25);
 
                 // Add to Document table automatically if within KPI period
                 if ($year) {
@@ -189,7 +189,7 @@ class ScholarController extends Controller
                 $totalScopusPoints = \App\Models\ScopusPublication::where('user_id', $user->id)
                     ->sum('awarded_points');
 
-                $user->update(['total_kpi_points' => $totalDocPoints + $totalPenPoints + $totalScopusPoints]);
+                $user->update(['total_kpi_points' => round($totalDocPoints + $totalPenPoints + $totalScopusPoints)]);
             }
         });
 

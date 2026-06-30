@@ -383,7 +383,7 @@ class ScopusController extends Controller
                     'is_corresponding' => $isCorresponding,
                     'is_corresponding_confirmed' => $isCorrespondingConfirmed,
                     'is_hyperauthor' => $isHyperauthor,
-                    'awarded_points' => round($awardedPoints, 2),
+                    'awarded_points' => round($awardedPoints),
                     'subtype'       => $subtype ?: ($subtypeDescription ?: null),
                     'total_authors' => $totalAuthors,
                     'created_at'    => now(),
@@ -406,7 +406,7 @@ class ScopusController extends Controller
             $totalScopusPoints = \App\Models\ScopusPublication::where('user_id', $user->id)
                 ->sum('awarded_points');
 
-            $user->update(['total_kpi_points' => $totalDocPoints + $totalPenPoints + $totalScopusPoints]);
+            $user->update(['total_kpi_points' => round($totalDocPoints + $totalPenPoints + $totalScopusPoints)]);
         });
 
         \App\Models\ActivityLog::log($user->id, 'Sync Scopus', 'User melakukan sinkronisasi data Scopus');
@@ -453,7 +453,7 @@ class ScopusController extends Controller
                 $totalScopusPoints = \App\Models\ScopusPublication::where('user_id', $user->id)
                     ->sum('awarded_points');
 
-                $user->update(['total_kpi_points' => $totalDocPoints + $totalPenPoints + $totalScopusPoints]);
+                $user->update(['total_kpi_points' => round($totalDocPoints + $totalPenPoints + $totalScopusPoints)]);
             }
         });
 
@@ -530,7 +530,7 @@ class ScopusController extends Controller
             
             // Recalculate points using the model helper
             $points = $pub->calculatePoints();
-            $pub->awarded_points = round($points, 2);
+            $pub->awarded_points = round($points);
             $pub->save();
 
             $pointDiff = $pub->awarded_points - $oldPoints;
@@ -564,7 +564,7 @@ class ScopusController extends Controller
             
             // Recalculate points using the model helper
             $points = $pub->calculatePoints();
-            $pub->awarded_points = round($points, 2);
+            $pub->awarded_points = round($points);
             $pub->save();
 
             $pointDiff = $pub->awarded_points - $oldPoints;

@@ -179,7 +179,7 @@ class DocumentController extends Controller
                         ->sum('awarded_points');
 
                     $doc->user->update([
-                        'total_kpi_points' => $totalDocPoints + $totalPenPoints + $totalScopusPoints
+                        'total_kpi_points' => round($totalDocPoints + $totalPenPoints + $totalScopusPoints)
                     ]);
                 }
             }
@@ -475,7 +475,7 @@ class DocumentController extends Controller
             $totalScopusPoints = \App\Models\ScopusPublication::where('user_id', $userId)
                 ->sum('awarded_points');
 
-            $user->update(['total_kpi_points' => $totalDocPoints + $totalPenPoints + $totalScopusPoints]);
+            $user->update(['total_kpi_points' => round($totalDocPoints + $totalPenPoints + $totalScopusPoints)]);
         }
 
         // Clear cache
