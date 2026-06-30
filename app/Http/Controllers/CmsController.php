@@ -9,6 +9,7 @@ use App\Models\PointWeight;
 use App\Models\Announcement;
 use App\Models\Faq;
 use App\Models\DocumentTemplate;
+use App\Models\Notification;
 use Illuminate\Support\Facades\Storage;
 use Carbon\Carbon;
 
@@ -133,6 +134,19 @@ class CmsController extends Controller
             'expires_at' => $request->expires_at,
             'created_by' => $request->created_by,
         ]);
+
+        if ($announcement->is_active) {
+            $users = User::all();
+            foreach ($users as $user) {
+                Notification::send(
+                    $user->id,
+                    'announcement',
+                    'Pengumuman Akademik Baru',
+                    "Pengumuman: '{$announcement->title}' telah diterbitkan.",
+                    ['announcement_id' => $announcement->id]
+                );
+            }
+        }
 
         return response()->json(['success' => true, 'announcement' => $announcement, 'message' => 'Pengumuman berhasil diterbitkan.']);
     }
