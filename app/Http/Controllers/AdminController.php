@@ -94,7 +94,7 @@ class AdminController extends Controller
         $cacheKey = "admin_all_lecturers_{$role}_{$userId}";
 
         $fetchData = function () use ($role, $userId) {
-            $query = User::with(['scholarData', 'scopusData'])
+            $query = User::with(['scholarData', 'scopusData', 'publications', 'scopusPublications', 'documents', 'penelitian'])
                 ->where('role', 'dosen');
 
             if ($role === 'admin fakultas') {
@@ -107,15 +107,80 @@ class AdminController extends Controller
             return $query->orderBy('name', 'asc')
                 ->get()
                 ->map(function ($u) {
+                    $publications = $u->publications;
+                    $scopusPublications = $u->scopusPublications;
+
+                    $normalizeT = function($title) {
+                        return preg_replace('/[^a-z0-9]/', '', strtolower($title));
+                    };
+
+                    $crossTitles = [];
+                    foreach ($publications as $pub) {
+                        $normPub = $normalizeT($pub->title);
+                        foreach ($scopusPublications as $scop) {
+                            if ($normalizeT($scop->title) === $normPub) {
+                                $crossTitles[] = $normPub;
+                                break;
+                            }
+                        }
+                    }
+                    $crossTitlesSet = array_unique($crossTitles);
+
+                    $extCross = 0;
+                    foreach ($scopusPublications as $scop) {
+                        $normT = $normalizeT($scop->title);
+                        if (in_array($normT, $crossTitlesSet)) {
+                            $extCross += (float)$scop->awarded_points;
+                        }
+                    }
+
+                    $extScopus = 0;
+                    foreach ($scopusPublications as $scop) {
+                        $normT = $normalizeT($scop->title);
+                        if (!in_array($normT, $crossTitlesSet)) {
+                            $extScopus += (float)$scop->awarded_points;
+                        }
+                    }
+
+                    $extScholar = 0;
+                    foreach ($publications as $pub) {
+                        $normT = $normalizeT($pub->title);
+                        if (!in_array($normT, $crossTitlesSet)) {
+                            $citations = (int)($pub->citations ?? 0);
+                            $docPoints = 0.5;
+                            $citationBonus = $citations > 0 ? 0.5 : 0;
+                            $citationPoints = min($citations, 500) * 0.25;
+                            $extScholar += ($docPoints + $citationBonus + $citationPoints);
+                        }
+                    }
+
+                    $poinExternal = round($extCross + $extScopus + $extScholar, 1);
+
+                    // Poin Internal: Documents Approved + Penelitian Approved
+                    $poinInternalDoc = $u->documents->filter(function($d) {
+                        return $d->status === 'Approved';
+                    })->sum('awarded_points');
+
+                    $poinInternalPen = $u->penelitian->filter(function($p) {
+                        return $p->status === 'Approved';
+                    })->sum('awarded_points');
+
+                    $poinInternal = round($poinInternalDoc + $poinInternalPen, 1);
+
                     return [
                         'id' => $u->id,
                         'name' => $u->name,
                         'email' => $u->email,
+                        'nidn' => $u->nidn,
+                        'penta_id' => $u->penta_id,
                         'fakultas' => $u->fakultas,
                         'program_studi' => $u->program_studi,
                         'scholar_id' => $u->scholar_id,
                         'scopus_id' => $u->scopus_id,
                         'total_kpi_points' => $u->total_kpi_points,
+                        'poin_internal' => $poinInternal,
+                        'poin_external' => $poinExternal,
+                        'scholar_document_count' => count($publications),
                         'total_citations' => $u->scholarData->total_citations ?? 0,
                         'h_index' => $u->scholarData->h_index ?? 0,
                         'i10_index' => $u->scholarData->i10_index ?? 0,
