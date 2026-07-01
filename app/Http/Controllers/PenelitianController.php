@@ -322,11 +322,23 @@ class PenelitianController extends Controller
             'skema' => 'required|in:kompetisi,pembinaan,lainnya',
             'fokus' => 'required|in:kesehatan,ekonomi,teknologi,sosial,lainnya',
             'tahun' => 'required|date',
+            'file' => 'nullable|file|mimes:pdf|max:10240',
         ], [
             'judul_penelitian.unique' => 'Penelitian dengan judul ini sudah terdaftar di sistem.',
         ]);
 
         $wasRejected = $penelitian->status === 'Rejected';
+
+        // Update file if a new one is provided
+        if ($request->hasFile('file')) {
+            // Delete old file
+            if ($penelitian->file_url && $penelitian->file_url !== '-' && $penelitian->file_url !== '') {
+                $oldPath = str_replace('/storage/', '', $penelitian->file_url);
+                Storage::disk('public')->delete($oldPath);
+            }
+            $path = $request->file('file')->store('penelitian', 'public');
+            $penelitian->file_url = Storage::url($path);
+        }
 
         $penelitian->judul_penelitian = $request->judul_penelitian;
         $penelitian->dana_disetujui   = $request->dana_disetujui;
