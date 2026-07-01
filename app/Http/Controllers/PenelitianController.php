@@ -28,7 +28,7 @@ class PenelitianController extends Controller
             'program' => 'required|in:hibah dikti,hibah internal,hibah luar negeri',
             'skema' => 'required|in:kompetisi,pembinaan',
             'fokus' => 'required|in:kesehatan,ekonomi',
-            'tahun' => 'required|integer',
+            'tahun' => 'required|date',
             'file' => 'nullable|file|mimes:pdf|max:10240',
         ], [
             'judul_penelitian.unique' => 'Penelitian dengan judul ini sudah terdaftar di sistem.'
@@ -321,7 +321,7 @@ class PenelitianController extends Controller
             'program' => 'required|in:hibah dikti,hibah internal,hibah luar negeri',
             'skema' => 'required|in:kompetisi,pembinaan,lainnya',
             'fokus' => 'required|in:kesehatan,ekonomi,teknologi,sosial,lainnya',
-            'tahun' => 'required|integer',
+            'tahun' => 'required|date',
         ], [
             'judul_penelitian.unique' => 'Penelitian dengan judul ini sudah terdaftar di sistem.',
         ]);

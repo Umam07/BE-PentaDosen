@@ -22,6 +22,10 @@ class Penelitian extends Model
         'catatan',
     ];
 
+    protected $casts = [
+        'tahun' => 'date',
+    ];
+
     public function user()
     {
         return $this->belongsTo(User::class);
