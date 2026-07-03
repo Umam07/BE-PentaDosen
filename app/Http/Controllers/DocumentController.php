@@ -151,6 +151,8 @@ class DocumentController extends Controller
                     'accreditation_period' => $accreditationPeriod,
                     'status' => $autoVerified ? 'Approved' : 'Pending',
                     'is_corresponding' => $request->boolean('is_corresponding', $existingDoc->is_corresponding),
+                    'hki_type' => $request->hki_type,
+                    'inventor_name' => $request->inventor_name,
                 ]);
                 $doc = $existingDoc;
             } else {
@@ -165,6 +167,8 @@ class DocumentController extends Controller
                     'status' => $autoVerified ? 'Approved' : 'Pending',
                     'awarded_points' => $awardedPoints,
                     'is_corresponding' => $request->boolean('is_corresponding', false),
+                    'hki_type' => $request->hki_type,
+                    'inventor_name' => $request->inventor_name,
                 ]);
 
                 // If auto-verified, update user's total KPI points
@@ -360,6 +364,8 @@ class DocumentController extends Controller
             'doc_type'     => 'required|in:kpi,arsip',
             'file'         => 'nullable|file|mimes:pdf,jpg,jpeg,png|max:10240',
             'is_corresponding' => 'nullable|boolean',
+            'hki_type' => 'nullable|string',
+            'inventor_name' => 'nullable|string',
         ]);
 
         $publishedAt = Carbon::parse($request->published_at);
@@ -394,6 +400,8 @@ class DocumentController extends Controller
         $doc->is_kpi_counted      = $isKpi;
         $doc->accreditation_period = $accreditationPeriod;
         $doc->is_corresponding    = $request->boolean('is_corresponding', $doc->is_corresponding);
+        $doc->hki_type = $request->hki_type;
+        $doc->inventor_name = $request->inventor_name;
 
         if ($wasRejected) {
             $doc->status = 'Pending';

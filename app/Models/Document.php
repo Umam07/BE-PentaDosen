@@ -24,6 +24,8 @@ class Document extends Model
         'author_order',
         'is_corresponding',
         'is_corresponding_confirmed',
+        'hki_type',
+        'inventor_name',
     ];
 
     protected $casts = [
