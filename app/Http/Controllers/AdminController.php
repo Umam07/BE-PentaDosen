@@ -8,6 +8,7 @@ use App\Models\Document;
 use App\Models\User;
 use App\Models\PointWeight;
 use App\Models\Notification;
+use App\Models\DocumentHistory;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Cache;
 
@@ -222,6 +223,13 @@ class AdminController extends Controller
                     Cache::flush();
                 }
 
+                \App\Models\DocumentHistory::create([
+                    'document_id' => $doc->id,
+                    'user_id' => $request->admin_id ?? $doc->user_id,
+                    'action' => 'Diverifikasi Fakultas',
+                    'notes' => null
+                ]);
+
                 return response()->json(['success' => true, 'message' => 'Document verified by fakultas. Waiting for admin approval.']);
             }
 
@@ -247,12 +255,19 @@ class AdminController extends Controller
             // Only award KPI points if document is within accreditation period
             $points = $doc->is_kpi_counted ? $categoryPoints : 0;
 
-            DB::transaction(function () use ($doc, $status, $points) {
+            DB::transaction(function () use ($doc, $status, $points, $request) {
                 $doc->update([
                     'status' => $status,
                     'awarded_points' => $points
                 ]);
                 
+                \App\Models\DocumentHistory::create([
+                    'document_id' => $doc->id,
+                    'user_id' => $request->admin_id ?? $doc->user_id,
+                    'action' => 'Disetujui Admin LPPM',
+                    'notes' => null
+                ]);
+
                 $totalDocPoints = Document::where('user_id', $doc->user_id)
                     ->where('status', 'Approved')
                     ->sum('awarded_points');
@@ -271,6 +286,13 @@ class AdminController extends Controller
             $doc->update([
                 'status' => $status,
                 'catatan' => $request->catatan ?? null
+            ]);
+            
+            \App\Models\DocumentHistory::create([
+                'document_id' => $doc->id,
+                'user_id' => $request->admin_id ?? $doc->user_id,
+                'action' => 'Ditolak ' . ($request->role === 'admin fakultas' ? 'Fakultas' : 'LPPM'),
+                'notes' => $request->catatan ?? null
             ]);
         }
 

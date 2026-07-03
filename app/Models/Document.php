@@ -45,4 +45,9 @@ class Document extends Model
     {
         return $this->belongsTo(Penelitian::class);
     }
+
+    public function history()
+    {
+        return $this->hasMany(DocumentHistory::class)->orderBy('created_at', 'asc');
+    }
 }

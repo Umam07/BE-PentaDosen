@@ -8,6 +8,7 @@ use App\Models\Document;
 use App\Models\PointWeight;
 use App\Models\ScholarPublication;
 use App\Models\ScopusPublication;
+use App\Models\DocumentHistory;
 use App\Models\Notification;
 use App\Models\User;
 use Illuminate\Support\Facades\Storage;
@@ -187,6 +188,13 @@ class DocumentController extends Controller
                     ]);
                 }
             }
+
+            // Log History
+            DocumentHistory::create([
+                'document_id' => $doc->id,
+                'user_id' => $request->user_id,
+                'action' => $existingDoc ? 'Dokumen Diperbarui' : 'Dokumen Diunggah',
+            ]);
 
             return $doc;
         });
@@ -410,6 +418,12 @@ class DocumentController extends Controller
 
         $doc->save();
 
+        DocumentHistory::create([
+            'document_id' => $doc->id,
+            'user_id' => $doc->user_id,
+            'action' => $wasRejected ? 'Dokumen Direvisi & Diajukan Ulang' : 'Dokumen Diperbarui',
+        ]);
+
         if ($wasRejected) {
             $dosen = \App\Models\User::find($doc->user_id);
             $dosenName = $dosen ? $dosen->name : 'Dosen';
@@ -499,6 +513,16 @@ class DocumentController extends Controller
         return response()->json([
             'success' => true,
             'message' => 'Dokumen berhasil dihapus.',
+        ]);
+    }
+
+    public function getHistory($id)
+    {
+        $doc = Document::findOrFail($id);
+        $history = $doc->history()->with('user:id,name,role')->get();
+        return response()->json([
+            'success' => true,
+            'history' => $history
         ]);
     }
 }

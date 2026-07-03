@@ -39,7 +39,7 @@ Route::middleware(['throttle:api'])->group(function () {
     Route::get('/users/{id}/approved-penelitian', [DocumentController::class, 'getApprovedPenelitian']);
     Route::put('/documents/{id}', [DocumentController::class, 'update']);
     Route::delete('/documents/{id}', [DocumentController::class, 'destroy']);
-
+    Route::get('/documents/{id}/history', [DocumentController::class, 'getHistory']);
     
     Route::get('/admin/documents', [AdminController::class, 'getPendingDocuments']);
     Route::get('/admin/documents/all', [AdminController::class, 'getAllDocuments']);
