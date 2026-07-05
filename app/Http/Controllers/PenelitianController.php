@@ -67,6 +67,12 @@ class PenelitianController extends Controller
             'awarded_points' => $awardedPoints,
         ]);
 
+        \App\Models\DocumentHistory::create([
+            'penelitian_id' => $penelitian->id,
+            'user_id' => $request->user_id,
+            'action' => 'Dokumen Diunggah',
+        ]);
+
         if ($status === 'Approved' && $awardedPoints > 0) {
             $user = User::find($request->user_id);
             if ($user) {
@@ -174,6 +180,14 @@ class PenelitianController extends Controller
                 }
                 $penelitian->status = 'Verified by Fakultas';
                 $penelitian->save();
+
+                \App\Models\DocumentHistory::create([
+                    'penelitian_id' => $penelitian->id,
+                    'user_id' => $request->admin_id ?? $penelitian->user_id,
+                    'action' => 'Diverifikasi Fakultas',
+                    'notes' => null
+                ]);
+
                 return response()->json(['success' => true, 'message' => 'Penelitian diverifikasi fakultas. Menunggu persetujuan LPPM/Admin.']);
             }
 
@@ -201,11 +215,25 @@ class PenelitianController extends Controller
             $user->increment('total_kpi_points', $points);
             
             $penelitian->save();
+
+            \App\Models\DocumentHistory::create([
+                'penelitian_id' => $penelitian->id,
+                'user_id' => $request->admin_id ?? $penelitian->user_id,
+                'action' => 'Disetujui Admin LPPM',
+                'notes' => null
+            ]);
         } else {
             // Rejection
             $penelitian->status = 'Rejected';
             $penelitian->catatan = $request->catatan;
             $penelitian->save();
+
+            \App\Models\DocumentHistory::create([
+                'penelitian_id' => $penelitian->id,
+                'user_id' => $request->admin_id ?? $penelitian->user_id,
+                'action' => 'Ditolak ' . ($role === 'admin fakultas' ? 'Fakultas' : 'LPPM'),
+                'notes' => $request->catatan ?? null
+            ]);
         }
 
         // Clear cache
@@ -284,6 +312,12 @@ class PenelitianController extends Controller
         $penelitian->file_url = $fileUrl;
         $penelitian->save();
 
+        \App\Models\DocumentHistory::create([
+            'penelitian_id' => $penelitian->id,
+            'user_id' => $penelitian->user_id,
+            'action' => 'Dokumen Diperbarui',
+        ]);
+
         if (Cache::supportsTags()) {
             Cache::tags(['penelitian'])->flush();
         } else {
@@ -353,6 +387,12 @@ class PenelitianController extends Controller
         }
 
         $penelitian->save();
+
+        \App\Models\DocumentHistory::create([
+            'penelitian_id' => $penelitian->id,
+            'user_id' => $penelitian->user_id,
+            'action' => 'Dokumen Diperbarui',
+        ]);
 
         if ($wasRejected) {
             $dosen = \App\Models\User::find($penelitian->user_id);

@@ -11,6 +11,7 @@ class DocumentHistory extends Model
 
     protected $fillable = [
         'document_id',
+        'penelitian_id',
         'user_id',
         'action',
         'notes',
@@ -19,6 +20,11 @@ class DocumentHistory extends Model
     public function document()
     {
         return $this->belongsTo(Document::class);
+    }
+
+    public function penelitian()
+    {
+        return $this->belongsTo(Penelitian::class);
     }
 
     public function user()

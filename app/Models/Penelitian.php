@@ -35,4 +35,9 @@ class Penelitian extends Model
     {
         return $this->hasMany(Document::class);
     }
+
+    public function history()
+    {
+        return $this->hasMany(DocumentHistory::class, 'penelitian_id')->orderBy('created_at', 'asc');
+    }
 }

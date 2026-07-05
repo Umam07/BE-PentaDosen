@@ -516,10 +516,16 @@ class DocumentController extends Controller
         ]);
     }
 
-    public function getHistory($id)
+    public function getHistory(Request $request, $id)
     {
-        $doc = Document::findOrFail($id);
-        $history = $doc->history()->with('user:id,name,role')->get();
+        $type = $request->query('type');
+        if ($type === 'penelitian') {
+            $penelitian = \App\Models\Penelitian::findOrFail($id);
+            $history = $penelitian->history()->with('user:id,name,role')->get();
+        } else {
+            $doc = Document::findOrFail($id);
+            $history = $doc->history()->with('user:id,name,role')->get();
+        }
         return response()->json([
             'success' => true,
             'history' => $history
