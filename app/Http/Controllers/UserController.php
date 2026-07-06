@@ -96,7 +96,7 @@ class UserController extends Controller
                                 if ($titleCode === 'M' || $titleCode === 'D') {
                                     $role = 'dosen';
                                 } elseif ($titleCode === 'S') {
-                                    $role = 'staf';
+                                    $role = 'admin fakultas';
                                 }
 
                                 // Find user in local database by email or uid to sync
