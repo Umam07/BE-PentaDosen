@@ -23,24 +23,23 @@ class UserController extends Controller
             return response()->json(['error' => 'Username and password are required'], 400);
         }
 
-        // 1. Try local database authentication first (for seeder users and testing)
-        // This is fast and allows testing with dummy data even without LDAP access
+        // 1. Try local database authentication ONLY for Super Admin
         $user = User::where('email', $username)->first();
-        if ($user && Hash::check($password, $user->password)) {
+        if ($user && $user->role === 'super admin' && Hash::check($password, $user->password)) {
             // Generate Penta ID if it doesn't exist yet (for legacy users)
             if (!$user->penta_id) {
                 $user->penta_id = $this->generatePentaId();
                 $user->save();
             }
 
-            \App\Models\ActivityLog::log($user->id, 'Login', 'User berhasil login ke sistem via Database Local');
+            \App\Models\ActivityLog::log($user->id, 'Login', 'Super Admin berhasil login ke sistem via Database Local');
             return response()->json(['user' => $user]);
         }
 
         // 2. Try LDAP authentication if local authentication fails or user is not found locally
         if (extension_loaded('ldap')) {
-            $ldapHost = 'ldap://pdc.yarsi.ac.id:389';
-            $ldapBaseDn = 'dc=yarsi,dc=ac,dc=id';
+            $ldapHost = env('LDAP_HOST', 'ldap://pdc.yarsi.ac.id:389');
+            $ldapBaseDn = env('LDAP_BASE_DN', 'dc=yarsi,dc=ac,dc=id');
 
             $ldapConn = @ldap_connect($ldapHost);
             if ($ldapConn) {
