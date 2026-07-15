@@ -194,14 +194,20 @@ class UserController extends Controller
     public function leaderboard()
     {
         $cacheKey = 'leaderboard_data';
-        $fetchData = function () {
+        $self = $this;
+        $fetchData = function () use ($self) {
             return User::with(['scholarData', 'scopusData'])
                 ->where('role', 'dosen')
                 ->orderBy('total_kpi_points', 'desc')
                 ->get()
-                ->map(function ($u) {
+                ->map(function ($u) use ($self) {
+                    if (!$u->penta_id) {
+                        $u->penta_id = $self->generatePentaId();
+                        $u->save();
+                    }
                     return [
                         'id' => $u->id,
+                        'penta_id' => $u->penta_id,
                         'name' => $u->name,
                         'fakultas' => $u->fakultas,
                         'program_studi' => $u->program_studi,
