@@ -21,15 +21,15 @@ class DocumentController extends Controller
     // Dynamic KPI Active period helpers
     private function getKpiPeriodStart()
     {
-        return \App\Models\SystemSetting::getValue('kpi_period_start', '2025-01-01');
+        return \App\Models\SystemSetting::getValue('kpi_period_start', '2026-01-01');
     }
     private function getKpiPeriodEnd()
     {
-        return \App\Models\SystemSetting::getValue('kpi_period_end', '2027-12-31');
+        return \App\Models\SystemSetting::getValue('kpi_period_end', '2026-12-31');
     }
     private function getKpiPeriodLabel()
     {
-        return \App\Models\SystemSetting::getValue('kpi_period_label', '2025-2027');
+        return \App\Models\SystemSetting::getValue('kpi_period_label', '2026');
     }
 
     public function upload(Request $request)
@@ -174,18 +174,7 @@ class DocumentController extends Controller
 
                 // If auto-verified, update user's total KPI points
                 if ($autoVerified) {
-                    $totalDocPoints = Document::where('user_id', $request->user_id)
-                        ->where('status', 'Approved')
-                        ->sum('awarded_points');
-                    $totalPenPoints = \App\Models\Penelitian::where('user_id', $request->user_id)
-                        ->where('status', 'Approved')
-                        ->sum('awarded_points');
-                    $totalScopusPoints = \App\Models\ScopusPublication::where('user_id', $request->user_id)
-                        ->sum('awarded_points');
-
-                    $doc->user->update([
-                        'total_kpi_points' => round($totalDocPoints + $totalPenPoints + $totalScopusPoints)
-                    ]);
+                    $doc->user->recalculateKpiPoints();
                 }
             }
 
@@ -485,19 +474,10 @@ class DocumentController extends Controller
 
         $doc->delete();
 
-        // Recalculate total kpi points (sum documents and penelitian)
+        // Recalculate total kpi points
         $user = User::find($userId);
         if ($user) {
-            $totalDocPoints = Document::where('user_id', $userId)
-                ->where('status', 'Approved')
-                ->sum('awarded_points');
-            $totalPenPoints = \App\Models\Penelitian::where('user_id', $userId)
-                ->where('status', 'Approved')
-                ->sum('awarded_points');
-            $totalScopusPoints = \App\Models\ScopusPublication::where('user_id', $userId)
-                ->sum('awarded_points');
-
-            $user->update(['total_kpi_points' => round($totalDocPoints + $totalPenPoints + $totalScopusPoints)]);
+            $user->recalculateKpiPoints();
         }
 
         // Clear cache

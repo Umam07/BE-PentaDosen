@@ -76,7 +76,7 @@ class PenelitianController extends Controller
         if ($status === 'Approved' && $awardedPoints > 0) {
             $user = User::find($request->user_id);
             if ($user) {
-                $user->increment('total_kpi_points', $awardedPoints);
+                $user->recalculateKpiPoints();
             }
         }
 
@@ -210,11 +210,13 @@ class PenelitianController extends Controller
 
             $penelitian->awarded_points = $points;
             
-            // Add points to user
-            $user = User::find($penelitian->user_id);
-            $user->increment('total_kpi_points', $points);
-            
             $penelitian->save();
+
+            // Recalculate user points
+            $user = User::find($penelitian->user_id);
+            if ($user) {
+                $user->recalculateKpiPoints();
+            }
 
             \App\Models\DocumentHistory::create([
                 'penelitian_id' => $penelitian->id,
@@ -440,13 +442,7 @@ class PenelitianController extends Controller
             ], 403);
         }
 
-        // Reverse points if any were awarded (e.g., from auto-approval)
-        if ($penelitian->awarded_points > 0 && $penelitian->status === 'Approved') {
-            $user = User::find($penelitian->user_id);
-            if ($user) {
-                $user->decrement('total_kpi_points', $penelitian->awarded_points);
-            }
-        }
+        // Points will be recalculated after deletion below
 
         // Delete stored file
         if ($penelitian->file_url && $penelitian->file_url !== '-') {
@@ -458,6 +454,11 @@ class PenelitianController extends Controller
         $userId = $penelitian->user_id;
 
         $penelitian->delete();
+
+        $user = User::find($userId);
+        if ($user) {
+            $user->recalculateKpiPoints();
+        }
 
         if (Cache::supportsTags()) {
             Cache::tags(['penelitian', 'stats', 'leaderboard', 'lecturers'])->flush();

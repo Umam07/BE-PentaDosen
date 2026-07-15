@@ -104,9 +104,9 @@ class ScopusController extends Controller
             $weights = \App\Models\PointWeight::pluck('weight_value', 'category')->toArray();
 
             // KPI Active period
-            $kpiPeriodStart = \Carbon\Carbon::parse('2025-01-01');
-            $kpiPeriodEnd   = \Carbon\Carbon::parse('2027-12-31');
-            $kpiPeriodLabel = '2025-2027';
+            $kpiPeriodStart = \Carbon\Carbon::parse(\App\Models\SystemSetting::getValue('kpi_period_start', '2026-01-01'));
+            $kpiPeriodEnd   = \Carbon\Carbon::parse(\App\Models\SystemSetting::getValue('kpi_period_end', '2026-12-31'));
+            $kpiPeriodLabel = \App\Models\SystemSetting::getValue('kpi_period_label', '2026');
 
             // Insert new publications
             $publicationsToInsert = [];
@@ -397,16 +397,7 @@ class ScopusController extends Controller
             }
 
             // Recalculate total kpi points
-            $totalDocPoints = \App\Models\Document::where('user_id', $user->id)
-                ->where('status', 'Approved')
-                ->sum('awarded_points');
-            $totalPenPoints = \App\Models\Penelitian::where('user_id', $user->id)
-                ->where('status', 'Approved')
-                ->sum('awarded_points');
-            $totalScopusPoints = \App\Models\ScopusPublication::where('user_id', $user->id)
-                ->sum('awarded_points');
-
-            $user->update(['total_kpi_points' => round($totalDocPoints + $totalPenPoints + $totalScopusPoints)]);
+            $user->recalculateKpiPoints();
         });
 
         \App\Models\ActivityLog::log($user->id, 'Sync Scopus', 'User melakukan sinkronisasi data Scopus');
@@ -444,16 +435,7 @@ class ScopusController extends Controller
                     ->delete();
                 
                 // Recalculate total kpi points
-                $totalDocPoints = \App\Models\Document::where('user_id', $user->id)
-                    ->where('status', 'Approved')
-                    ->sum('awarded_points');
-                $totalPenPoints = \App\Models\Penelitian::where('user_id', $user->id)
-                    ->where('status', 'Approved')
-                    ->sum('awarded_points');
-                $totalScopusPoints = \App\Models\ScopusPublication::where('user_id', $user->id)
-                    ->sum('awarded_points');
-
-                $user->update(['total_kpi_points' => round($totalDocPoints + $totalPenPoints + $totalScopusPoints)]);
+                $user->recalculateKpiPoints();
             }
         });
 
@@ -471,13 +453,66 @@ class ScopusController extends Controller
                 ];
             }
 
-            // Test the author ID validity using Search API bypassing restrictions
+            // 1. Try Author Retrieval API first (most accurate — gets official profile name directly)
+            try {
+                $profileRes = Http::withHeaders([
+                    'X-ELS-APIKey' => $apiKey,
+                    'Accept' => 'application/json'
+                ])->timeout(10)->get("https://api.elsevier.com/content/author/author_id/" . $scopus_id);
+
+                if ($profileRes->successful()) {
+                    $profileData = $profileRes->json();
+                    $authorData = $profileData['author-retrieval-response'][0] ?? null;
+                    if ($authorData && ($authorData['@status'] ?? '') === 'found') {
+                        $profile = $authorData['author-profile'] ?? null;
+                        if ($profile) {
+                            $preferredName = $profile['preferred-name'] ?? null;
+                            $name = '';
+                            if ($preferredName) {
+                                $given = $preferredName['given-name'] ?? '';
+                                $surname = $preferredName['surname'] ?? '';
+                                $name = trim($given . ' ' . $surname);
+                                if (!$name) {
+                                    $name = $preferredName['indexed-name'] ?? '';
+                                }
+                            }
+                            if (!$name) {
+                                $name = 'Scopus Author ID: ' . $scopus_id;
+                            }
+
+                            $affil = $authorData['affiliation-current'] ?? null;
+                            $affiliation = null;
+                            if (is_array($affil)) {
+                                $affiliation = $affil['affiliation-name'] ?? null;
+                            }
+                            if (!$affiliation) {
+                                $affiliation = 'Pencarian Scopus';
+                            }
+
+                            return [
+                                'status' => 200,
+                                'data' => [
+                                    'success' => true,
+                                    'name' => $name,
+                                    'affiliations' => is_string($affiliation) ? $affiliation : 'Scopus Author'
+                                ]
+                            ];
+                        }
+                    }
+                }
+            } catch (\Exception $e) {
+                // Silently fallback — Author Retrieval API may return 401 for free API keys
+            }
+
+            // 2. Fallback: Cross-publication frequency analysis
+            //    Fetch multiple publications for AU-ID, then use OpenAlex/CrossRef to get full
+            //    author lists. The author appearing in the most publications is the ID owner.
             $response = Http::withHeaders([
                 'X-ELS-APIKey' => $apiKey,
                 'Accept' => 'application/json'
             ])->timeout(15)->get("https://api.elsevier.com/content/search/scopus", [
                 'query' => 'AU-ID(' . $scopus_id . ')',
-                'count' => 1
+                'count' => 10
             ]);
 
             if ($response->failed()) {
@@ -488,8 +523,7 @@ class ScopusController extends Controller
             }
 
             $data = $response->json();
-            
-            // If no documents found, we can't verify the author easily through standard free API
+
             if (empty($data['search-results']['entry']) || !isset($data['search-results']['entry'][0]['dc:title'])) {
                 return [
                     'status' => 404,
@@ -497,9 +531,105 @@ class ScopusController extends Controller
                 ];
             }
 
-            $authorInfo = $data['search-results']['entry'][0];
-            $name = $authorInfo['dc:creator'] ?? 'Scopus Author ID: ' . $scopus_id;
-            $affiliation = $authorInfo['affiliation'][0]['affilname'] ?? 'Pencarian Scopus';
+            $entries = $data['search-results']['entry'];
+            $firstEntry = $entries[0];
+            $affiliation = $firstEntry['affiliation'][0]['affilname'] ?? 'Pencarian Scopus';
+
+            // Collect DOIs from the publications
+            $dois = [];
+            foreach ($entries as $entry) {
+                $d = $entry['prism:doi'] ?? null;
+                if ($d) $dois[] = $d;
+            }
+
+            // Analyse author frequency across publications
+            $authorCounts = [];  // lowercase name => count
+            $authorNames  = [];  // lowercase name => original casing
+            $pubsAnalysed = 0;
+
+            foreach (array_slice($dois, 0, 5) as $doi) { // Limit to 5 API calls for speed
+                $authors = [];
+
+                // Try OpenAlex first (fast, comprehensive)
+                try {
+                    $oaRes = Http::timeout(6)
+                        ->withHeaders(['User-Agent' => 'PentaDosen/1.0 (mailto:admin@pentadosen.id)'])
+                        ->get("https://api.openalex.org/works/https://doi.org/{$doi}");
+                    if ($oaRes->successful()) {
+                        foreach ($oaRes->json()['authorships'] ?? [] as $a) {
+                            $n = $a['author']['display_name'] ?? '';
+                            if ($n) $authors[] = $n;
+                        }
+                    }
+                } catch (\Exception $e) {}
+
+                // Fallback to CrossRef
+                if (empty($authors)) {
+                    try {
+                        $crRes = Http::timeout(5)->get("https://api.crossref.org/works/" . $doi);
+                        if ($crRes->successful()) {
+                            foreach ($crRes->json()['message']['author'] ?? [] as $a) {
+                                $n = trim(($a['given'] ?? '') . ' ' . ($a['family'] ?? ''));
+                                if ($n) $authors[] = $n;
+                            }
+                        }
+                    } catch (\Exception $e) {}
+                }
+
+                if (!empty($authors)) {
+                    $pubsAnalysed++;
+                    foreach ($authors as $n) {
+                        $key = strtolower(trim($n));
+                        $authorCounts[$key] = ($authorCounts[$key] ?? 0) + 1;
+                        if (!isset($authorNames[$key])) {
+                            $authorNames[$key] = $n;
+                        }
+                    }
+                }
+            }
+
+            // Determine the profile owner: author with highest frequency
+            $name = null;
+            if ($pubsAnalysed >= 2 && !empty($authorCounts)) {
+                arsort($authorCounts);
+                $topKey   = array_key_first($authorCounts);
+                $topCount = $authorCounts[$topKey];
+                // Only trust if the top author appears in at least 2 publications
+                // and appears more than the second-most-frequent author
+                if ($topCount >= 2) {
+                    $name = $authorNames[$topKey];
+                    // Also try to get a better affiliation from OpenAlex author profile
+                    // for the identified author (optional enhancement)
+                }
+            }
+
+            // Fallback to dc:creator if frequency analysis didn't yield a result
+            if (!$name) {
+                $name = $firstEntry['dc:creator'] ?? 'Scopus Author ID: ' . $scopus_id;
+            }
+
+            // Try to resolve a more accurate affiliation for the matched author name via OpenAlex
+            if ($name) {
+                try {
+                    $oaAuthorRes = Http::timeout(6)
+                        ->withHeaders(['User-Agent' => 'PentaDosen/1.0 (mailto:admin@pentadosen.id)'])
+                        ->get("https://api.openalex.org/authors", [
+                            'filter' => 'display_name.search:' . $name
+                        ]);
+                    if ($oaAuthorRes->successful()) {
+                        $oaAuthorData = $oaAuthorRes->json();
+                        foreach ($oaAuthorData['results'] ?? [] as $r) {
+                            $insts = $r['last_known_institutions'] ?? [];
+                            if (!empty($insts)) {
+                                $affiliation = $insts[0]['display_name'];
+                                break;
+                            }
+                        }
+                    }
+                } catch (\Exception $e) {
+                    // Silently ignore OpenAlex lookup errors
+                }
+            }
 
             return [
                 'status' => 200,
@@ -525,18 +655,15 @@ class ScopusController extends Controller
         $newQuartile = $request->quartile === 'None' ? null : $request->quartile;
 
         DB::transaction(function () use ($pub, $user, $newQuartile) {
-            $oldPoints = $pub->awarded_points;
             $pub->quartile = $newQuartile;
             
             // Recalculate points using the model helper
             $points = $pub->calculatePoints();
             $pub->awarded_points = round($points);
             $pub->save();
-
-            $pointDiff = $pub->awarded_points - $oldPoints;
-            if ($pointDiff != 0) {
-                $user->increment('total_kpi_points', $pointDiff);
-            }
+            
+            // Recalculate total kpi points
+            $user->recalculateKpiPoints();
         });
 
         if (Cache::supportsTags()) {
@@ -567,10 +694,8 @@ class ScopusController extends Controller
             $pub->awarded_points = round($points);
             $pub->save();
 
-            $pointDiff = $pub->awarded_points - $oldPoints;
-            if ($pointDiff != 0) {
-                $user->increment('total_kpi_points', $pointDiff);
-            }
+            // Recalculate total kpi points
+            $user->recalculateKpiPoints();
         });
 
         if (Cache::supportsTags()) {

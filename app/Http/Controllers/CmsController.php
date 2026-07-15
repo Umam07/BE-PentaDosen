@@ -21,9 +21,9 @@ class CmsController extends Controller
     public function getSettings()
     {
         return response()->json([
-            'kpi_period_start' => SystemSetting::getValue('kpi_period_start', '2025-01-01'),
-            'kpi_period_end' => SystemSetting::getValue('kpi_period_end', '2027-12-31'),
-            'kpi_period_label' => SystemSetting::getValue('kpi_period_label', '2025-2027'),
+            'kpi_period_start' => SystemSetting::getValue('kpi_period_start', '2026-01-01'),
+            'kpi_period_end' => SystemSetting::getValue('kpi_period_end', '2026-12-31'),
+            'kpi_period_label' => SystemSetting::getValue('kpi_period_label', '2026'),
         ]);
     }
 

@@ -76,9 +76,9 @@ class ScholarController extends Controller
             }
 
             // KPI Active period
-            $kpiPeriodStart = \Carbon\Carbon::parse('2025-01-01');
-            $kpiPeriodEnd   = \Carbon\Carbon::parse('2027-12-31');
-            $kpiPeriodLabel = '2025-2027';
+            $kpiPeriodStart = \Carbon\Carbon::parse(\App\Models\SystemSetting::getValue('kpi_period_start', '2026-01-01'));
+            $kpiPeriodEnd   = \Carbon\Carbon::parse(\App\Models\SystemSetting::getValue('kpi_period_end', '2026-12-31'));
+            $kpiPeriodLabel = \App\Models\SystemSetting::getValue('kpi_period_label', '2026');
 
             // Sync publications
             $publications = $data['articles'] ?? [];
@@ -113,14 +113,10 @@ class ScholarController extends Controller
                             ->first();
 
                         if ($doc) {
-                            $pointDiff = $awardedPoints - $doc->awarded_points;
                             $doc->update([
                                 'category' => 'Google Scholar',
                                 'awarded_points' => $awardedPoints,
                             ]);
-                            if ($pointDiff != 0) {
-                                $user->increment('total_kpi_points', $pointDiff);
-                            }
                         } else {
                             $doc = \App\Models\Document::create([
                                 'user_id' => $user->id,
@@ -133,13 +129,13 @@ class ScholarController extends Controller
                                 'status' => 'Approved',
                                 'awarded_points' => $awardedPoints,
                             ]);
-                            if ($awardedPoints > 0) {
-                                $user->increment('total_kpi_points', $awardedPoints);
-                            }
                         }
                     }
                 }
             }
+
+            // Recalculate total kpi points
+            $user->recalculateKpiPoints();
         });
         
         \App\Models\ActivityLog::log($user->id, 'Sync Scholar', 'User melakukan sinkronisasi data Google Scholar');
@@ -179,17 +175,8 @@ class ScholarController extends Controller
                     ->where('file_url', '')
                     ->delete();
                 
-                // Recalculate total kpi points (sum documents and penelitian)
-                $totalDocPoints = \App\Models\Document::where('user_id', $user->id)
-                    ->where('status', 'Approved')
-                    ->sum('awarded_points');
-                $totalPenPoints = \App\Models\Penelitian::where('user_id', $user->id)
-                    ->where('status', 'Approved')
-                    ->sum('awarded_points');
-                $totalScopusPoints = \App\Models\ScopusPublication::where('user_id', $user->id)
-                    ->sum('awarded_points');
-
-                $user->update(['total_kpi_points' => round($totalDocPoints + $totalPenPoints + $totalScopusPoints)]);
+                // Recalculate total kpi points
+                $user->recalculateKpiPoints();
             }
         });
 

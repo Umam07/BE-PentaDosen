@@ -41,7 +41,7 @@ class DatabaseSeeder extends Seeder
         \App\Models\PointWeight::updateOrCreate(['category' => 'Scopus Article Q3 (First Author)'], ['weight_value' => 20]);
         \App\Models\PointWeight::updateOrCreate(['category' => 'Scopus Article Q4 (First Author)'], ['weight_value' => 18]);
         \App\Models\PointWeight::updateOrCreate(['category' => 'Scopus Article Hyperauthor (First Author)'], ['weight_value' => 24]);
-        
+
         \App\Models\PointWeight::updateOrCreate(['category' => 'Scopus Article Q1 (Member Author)'], ['weight_value' => 16]);
         \App\Models\PointWeight::updateOrCreate(['category' => 'Scopus Article Q2 (Member Author)'], ['weight_value' => 14]);
         \App\Models\PointWeight::updateOrCreate(['category' => 'Scopus Article Q3 (Member Author)'], ['weight_value' => 12]);
@@ -93,7 +93,7 @@ class DatabaseSeeder extends Seeder
         );
         User::updateOrCreate(
             ['email' => 'kiki@univ.edu'],
-            ['name' => 'Kiki Aimar Wicaksana', 'role' => 'dosen', 'scholar_id' => 'V4Qtn5YAAAAJ&hl  ', 'scopus_id' => '60103952600', 'fakultas' => 'Fakultas Ekonomi dan Bisnis', 'program_studi' => 'Akuntansi', 'password' => bcrypt('password'), 'total_kpi_points' => 0]
+            ['name' => 'Kiki Aimar Wicaksana', 'role' => 'dosen', 'scholar_id' => '', 'scopus_id' => '', 'fakultas' => 'Fakultas Ekonomi dan Bisnis', 'program_studi' => 'Akuntansi', 'password' => bcrypt('password'), 'total_kpi_points' => 0]
         );
         User::updateOrCreate(
             ['email' => 'danis@univ.edu'],
@@ -123,9 +123,9 @@ class DatabaseSeeder extends Seeder
         );
 
         // Seeding default system settings
-        \App\Models\SystemSetting::updateOrCreate(['key' => 'kpi_period_start'], ['value' => '2025-01-01']);
-        \App\Models\SystemSetting::updateOrCreate(['key' => 'kpi_period_end'], ['value' => '2027-12-31']);
-        \App\Models\SystemSetting::updateOrCreate(['key' => 'kpi_period_label'], ['value' => '2025-2027']);
+        \App\Models\SystemSetting::updateOrCreate(['key' => 'kpi_period_start'], ['value' => '2026-01-01']);
+        \App\Models\SystemSetting::updateOrCreate(['key' => 'kpi_period_end'], ['value' => '2026-12-31']);
+        \App\Models\SystemSetting::updateOrCreate(['key' => 'kpi_period_label'], ['value' => '2026']);
         // Scholar data will be synced via real API instead of initialized with dummy data
     }
 }
