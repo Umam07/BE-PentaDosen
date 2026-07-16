@@ -95,7 +95,7 @@ class UserController extends Controller
                                 if ($titleCode === 'M' || $titleCode === 'D') {
                                     $role = 'dosen';
                                 } elseif ($titleCode === 'S') {
-                                    $role = 'admin fakultas';
+                                    $role = 'admin penelitian';
                                 }
 
                                 // Find user in local database by email or uid to sync
@@ -113,7 +113,7 @@ class UserController extends Controller
                                 $user->phone = $phone ?: $user->phone;
 
                                 // Prevent LDAP from overwriting admin/super admin/reviewer roles
-                                if (!$user->exists || !in_array($user->role, ['super admin', 'admin lppm', 'admin fakultas', 'reviewer'])) {
+                                if (!$user->exists || !in_array($user->role, ['super admin', 'admin penelitian', 'admin fakultas', 'reviewer'])) {
                                     $user->role = $role;
                                 }
 

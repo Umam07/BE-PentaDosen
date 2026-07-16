@@ -115,7 +115,7 @@ class DatabaseSeeder extends Seeder
 
         User::updateOrCreate(
             ['email' => 'penelitian@univ.edu'],
-            ['name' => 'Admin Penelitian', 'role' => 'admin lppm', 'password' => bcrypt('password')]
+            ['name' => 'Admin Penelitian', 'role' => 'admin penelitian', 'password' => bcrypt('password')]
         );
         User::updateOrCreate(
             ['email' => 'fakultas@univ.edu'],

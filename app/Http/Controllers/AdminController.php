@@ -31,7 +31,7 @@ class AdminController extends Controller
                         $q->where('fakultas', $admin->fakultas);
                     });
                 }
-            } elseif ($role === 'admin lppm') {
+            } elseif ($role === 'admin penelitian') {
                 $query->where('status', 'Verified by Fakultas');
             } else {
                 // Default behavior if role is unknown or not provided
@@ -207,7 +207,7 @@ class AdminController extends Controller
     public function verifyDocument(Request $request, $id)
     {
         $status = $request->status; // 'Approved' or 'Rejected'
-        $role = $request->role; // 'admin lppm' or 'admin fakultas'
+        $role = $request->role; // 'admin penelitian' or 'admin fakultas'
         $doc = Document::findOrFail($id);
 
         if ($status === 'Approved') {
@@ -264,7 +264,7 @@ class AdminController extends Controller
                 \App\Models\DocumentHistory::create([
                     'document_id' => $doc->id,
                     'user_id' => $request->admin_id ?? $doc->user_id,
-                    'action' => 'Disetujui Admin LPPM',
+                    'action' => 'Disetujui Admin Penelitian',
                     'notes' => null
                 ]);
 
@@ -291,7 +291,7 @@ class AdminController extends Controller
             \App\Models\DocumentHistory::create([
                 'document_id' => $doc->id,
                 'user_id' => $request->admin_id ?? $doc->user_id,
-                'action' => 'Ditolak ' . ($request->role === 'admin fakultas' ? 'Fakultas' : 'LPPM'),
+                'action' => 'Ditolak ' . ($request->role === 'admin fakultas' ? 'Fakultas' : 'Penelitian'),
                 'notes' => $request->catatan ?? null
             ]);
         }
@@ -321,11 +321,11 @@ class AdminController extends Controller
                 "Dokumen '{$docTitle}' telah diverifikasi oleh Admin Fakultas. Menunggu persetujuan LPPM.",
                 ['doc_id' => $doc->id]
             );
-            // Notify Admin LPPM: document ready for their review
-            $adminLppmList = User::where('role', 'admin lppm')->get();
-            foreach ($adminLppmList as $adminLppm) {
+            // Notify Admin Penelitian: document ready for their review
+            $adminPenelitianList = User::where('role', 'admin penelitian')->get();
+            foreach ($adminPenelitianList as $adminPenelitian) {
                 Notification::send(
-                    $adminLppm->id,
+                    $adminPenelitian->id,
                     'doc_pending_lppm',
                     'Dokumen Siap Ditinjau LPPM',
                     "Dokumen '{$docTitle}' telah diverifikasi Fakultas dan menunggu persetujuan LPPM.",

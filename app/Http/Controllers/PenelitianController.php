@@ -125,7 +125,7 @@ class PenelitianController extends Controller
         $cacheKey = "penelitian_index_{$userId}_{$role}_{$all}";
 
         $fetchData = function () use ($userId, $role, $all) {
-            if ($role === 'admin lppm') {
+            if ($role === 'admin penelitian') {
                 $query = Penelitian::with('user');
                 if ($all !== 'true') {
                     $query->where('status', 'Verified by Fakultas');
@@ -192,7 +192,7 @@ class PenelitianController extends Controller
             }
 
             // Admin Approval Logic
-            if ($role !== 'admin lppm' && $penelitian->status !== 'Verified by Fakultas') {
+            if ($role !== 'admin penelitian' && $penelitian->status !== 'Verified by Fakultas') {
                 return response()->json(['success' => false, 'message' => 'Penelitian harus diverifikasi fakultas terlebih dahulu.'], 400);
             }
 
@@ -221,7 +221,7 @@ class PenelitianController extends Controller
             \App\Models\DocumentHistory::create([
                 'penelitian_id' => $penelitian->id,
                 'user_id' => $request->admin_id ?? $penelitian->user_id,
-                'action' => 'Disetujui Admin LPPM',
+                'action' => 'Disetujui Admin Penelitian',
                 'notes' => null
             ]);
         } else {
@@ -233,7 +233,7 @@ class PenelitianController extends Controller
             \App\Models\DocumentHistory::create([
                 'penelitian_id' => $penelitian->id,
                 'user_id' => $request->admin_id ?? $penelitian->user_id,
-                'action' => 'Ditolak ' . ($role === 'admin fakultas' ? 'Fakultas' : 'LPPM'),
+                'action' => 'Ditolak ' . ($role === 'admin fakultas' ? 'Fakultas' : 'Penelitian'),
                 'notes' => $request->catatan ?? null
             ]);
         }
@@ -262,11 +262,11 @@ class PenelitianController extends Controller
                 "Penelitian '{$judulPenelitian}' telah diverifikasi Fakultas. Menunggu persetujuan LPPM.",
                 ['penelitian_id' => $penelitian->id]
             );
-            // Notify Admin LPPM
-            $adminLppmList = User::where('role', 'admin lppm')->get();
-            foreach ($adminLppmList as $adminLppm) {
+            // Notify Admin Penelitian
+            $adminPenelitianList = User::where('role', 'admin penelitian')->get();
+            foreach ($adminPenelitianList as $adminPenelitian) {
                 Notification::send(
-                    $adminLppm->id,
+                    $adminPenelitian->id,
                     'penelitian_pending_lppm',
                     'Penelitian Siap Ditinjau LPPM',
                     "Penelitian '{$judulPenelitian}' telah diverifikasi Fakultas dan siap untuk ditinjau LPPM.",

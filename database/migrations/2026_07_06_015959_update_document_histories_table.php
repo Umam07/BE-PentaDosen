@@ -26,7 +26,7 @@ return new class extends Migration
 
         // 3. Backfill history for existing documents and penelitian
         $adminFakultas = DB::table('users')->where('role', 'admin fakultas')->first();
-        $adminLppm = DB::table('users')->where('role', 'admin lppm')->first();
+        $adminLppm = DB::table('users')->where('role', 'admin penelitian')->first();
 
         $adminFakultasId = $adminFakultas ? $adminFakultas->id : null;
         $adminLppmId = $adminLppm ? $adminLppm->id : null;
@@ -72,14 +72,14 @@ return new class extends Migration
             if ($doc->status === 'Approved') {
                 $hasApproved = DB::table('document_histories')
                     ->where('document_id', $doc->id)
-                    ->where('action', 'Disetujui Admin LPPM')
+                    ->where('action', 'Disetujui Admin Penelitian')
                     ->exists();
 
                 if (!$hasApproved) {
                     DB::table('document_histories')->insert([
                         'document_id' => $doc->id,
                         'user_id' => $adminLppmId ?? $doc->user_id,
-                        'action' => 'Disetujui Admin LPPM',
+                        'action' => 'Disetujui Admin Penelitian',
                         'notes' => null,
                         'created_at' => $doc->updated_at,
                         'updated_at' => $doc->updated_at,
@@ -97,7 +97,7 @@ return new class extends Migration
                     DB::table('document_histories')->insert([
                         'document_id' => $doc->id,
                         'user_id' => $adminLppmId ?? ($adminFakultasId ?? $doc->user_id),
-                        'action' => 'Ditolak LPPM',
+                        'action' => 'Ditolak Penelitian',
                         'notes' => $doc->catatan,
                         'created_at' => $doc->updated_at,
                         'updated_at' => $doc->updated_at,
@@ -147,14 +147,14 @@ return new class extends Migration
             if ($pen->status === 'Approved') {
                 $hasApproved = DB::table('document_histories')
                     ->where('penelitian_id', $pen->id)
-                    ->where('action', 'Disetujui Admin LPPM')
+                    ->where('action', 'Disetujui Admin Penelitian')
                     ->exists();
 
                 if (!$hasApproved) {
                     DB::table('document_histories')->insert([
                         'penelitian_id' => $pen->id,
                         'user_id' => $adminLppmId ?? $pen->user_id,
-                        'action' => 'Disetujui Admin LPPM',
+                        'action' => 'Disetujui Admin Penelitian',
                         'notes' => null,
                         'created_at' => $pen->updated_at,
                         'updated_at' => $pen->updated_at,
@@ -172,7 +172,7 @@ return new class extends Migration
                     DB::table('document_histories')->insert([
                         'penelitian_id' => $pen->id,
                         'user_id' => $adminLppmId ?? ($adminFakultasId ?? $pen->user_id),
-                        'action' => 'Ditolak LPPM',
+                        'action' => 'Ditolak Penelitian',
                         'notes' => $pen->catatan,
                         'created_at' => $pen->updated_at,
                         'updated_at' => $pen->updated_at,
