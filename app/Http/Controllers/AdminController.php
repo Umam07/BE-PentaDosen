@@ -9,6 +9,8 @@ use App\Models\User;
 use App\Models\PointWeight;
 use App\Models\Notification;
 use App\Models\DocumentHistory;
+use App\Models\ScopusPublication;
+use App\Models\ScholarPublication;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Cache;
 
@@ -61,22 +63,139 @@ class AdminController extends Controller
         $cacheKey = "admin_all_documents_{$role}_{$userId}";
 
         $fetchData = function () use ($role, $userId) {
-            $query = Document::with('user');
-
+            $adminFakultas = null;
             if ($role === 'admin fakultas') {
                 $admin = User::find($userId);
                 if ($admin && $admin->fakultas) {
-                    $query->whereHas('user', function ($q) use ($admin) {
-                        $q->where('fakultas', $admin->fakultas);
-                    });
+                    $adminFakultas = $admin->fakultas;
                 }
             }
 
-            return $query->orderBy('created_at', 'desc')
+            // 1. Fetch manual documents
+            $query = Document::with('user');
+            if ($adminFakultas) {
+                $query->whereHas('user', function ($q) use ($adminFakultas) {
+                    $q->where('fakultas', $adminFakultas);
+                });
+            }
+
+            $manualDocs = $query->orderBy('created_at', 'desc')
                 ->get()
                 ->map(function ($doc) {
-                    return array_merge($doc->toArray(), ['user_name' => $doc->user->name, 'fakultas' => $doc->user->fakultas]);
+                    return array_merge($doc->toArray(), [
+                        'user_name' => $doc->user ? $doc->user->name : '',
+                        'fakultas' => $doc->user ? $doc->user->fakultas : '',
+                    ]);
                 });
+
+            // Map user_id -> set of normalized titles existing in Document table to prevent duplicates
+            $existingTitles = [];
+            foreach ($manualDocs as $d) {
+                $uid = $d['user_id'];
+                $normT = preg_replace('/[^a-z0-9]/', '', strtolower($d['title'] ?? ''));
+                if ($normT) {
+                    $existingTitles[$uid][$normT] = true;
+                }
+            }
+
+            $kpiPeriodStart = \Carbon\Carbon::parse(\App\Models\SystemSetting::getValue('kpi_period_start', '2026-01-01'));
+            $kpiPeriodEnd   = \Carbon\Carbon::parse(\App\Models\SystemSetting::getValue('kpi_period_end', '2026-12-31'));
+            $kpiPeriodLabel = \App\Models\SystemSetting::getValue('kpi_period_label', '2026');
+
+            // 2. Fetch Scopus Publications
+            $scopusQuery = ScopusPublication::with('user');
+            if ($adminFakultas) {
+                $scopusQuery->whereHas('user', function ($q) use ($adminFakultas) {
+                    $q->where('fakultas', $adminFakultas);
+                });
+            }
+
+            $scopusDocs = $scopusQuery->get()->filter(function ($pub) use (&$existingTitles) {
+                $normT = preg_replace('/[^a-z0-9]/', '', strtolower($pub->title ?? ''));
+                if ($normT && isset($existingTitles[$pub->user_id][$normT])) {
+                    return false;
+                }
+                if ($normT) {
+                    $existingTitles[$pub->user_id][$normT] = true;
+                }
+                return true;
+            })->map(function ($pub) use ($kpiPeriodStart, $kpiPeriodEnd, $kpiPeriodLabel) {
+                $publishedAt = $pub->year ? ($pub->year . '-01-01') : null;
+                $isKpi = false;
+                if ($pub->year) {
+                    $dt = \Carbon\Carbon::createFromDate((int)$pub->year, 1, 1);
+                    $isKpi = $dt->between($kpiPeriodStart, $kpiPeriodEnd);
+                }
+
+                return [
+                    'id' => 'scopus_' . $pub->id,
+                    'user_id' => $pub->user_id,
+                    'title' => $pub->title,
+                    'category' => 'Jurnal Internasional',
+                    'file_url' => '-',
+                    'published_at' => $publishedAt,
+                    'status' => 'Approved',
+                    'awarded_points' => (float)($pub->awarded_points ?: 0),
+                    'is_kpi_counted' => $isKpi,
+                    'accreditation_period' => $isKpi ? $kpiPeriodLabel : null,
+                    'user_name' => $pub->user ? $pub->user->name : '',
+                    'fakultas' => $pub->user ? $pub->user->fakultas : '',
+                    'created_at' => $pub->created_at ? $pub->created_at->toDateTimeString() : ($publishedAt ? $publishedAt . ' 00:00:00' : null),
+                    'source' => 'scopus',
+                ];
+            });
+
+            // 3. Fetch Scholar Publications
+            $scholarQuery = ScholarPublication::with('user');
+            if ($adminFakultas) {
+                $scholarQuery->whereHas('user', function ($q) use ($adminFakultas) {
+                    $q->where('fakultas', $adminFakultas);
+                });
+            }
+
+            $scholarDocs = $scholarQuery->get()->filter(function ($pub) use (&$existingTitles) {
+                $normT = preg_replace('/[^a-z0-9]/', '', strtolower($pub->title ?? ''));
+                if ($normT && isset($existingTitles[$pub->user_id][$normT])) {
+                    return false;
+                }
+                if ($normT) {
+                    $existingTitles[$pub->user_id][$normT] = true;
+                }
+                return true;
+            })->map(function ($pub) use ($kpiPeriodStart, $kpiPeriodEnd, $kpiPeriodLabel) {
+                $publishedAt = $pub->year ? ($pub->year . '-01-01') : null;
+                $isKpi = false;
+                if ($pub->year) {
+                    $dt = \Carbon\Carbon::createFromDate((int)$pub->year, 1, 1);
+                    $isKpi = $dt->between($kpiPeriodStart, $kpiPeriodEnd);
+                }
+
+                $citations = (int)($pub->citations ?? 0);
+                $awardedPoints = round(0.5 + ($citations > 0 ? 0.5 : 0) + min($citations, 500) * 0.25);
+
+                return [
+                    'id' => 'scholar_' . $pub->id,
+                    'user_id' => $pub->user_id,
+                    'title' => $pub->title,
+                    'category' => 'Jurnal Nasional',
+                    'file_url' => '-',
+                    'published_at' => $publishedAt,
+                    'status' => 'Approved',
+                    'awarded_points' => (float)$awardedPoints,
+                    'is_kpi_counted' => $isKpi,
+                    'accreditation_period' => $isKpi ? $kpiPeriodLabel : null,
+                    'user_name' => $pub->user ? $pub->user->name : '',
+                    'fakultas' => $pub->user ? $pub->user->fakultas : '',
+                    'created_at' => $pub->created_at ? $pub->created_at->toDateTimeString() : ($publishedAt ? $publishedAt . ' 00:00:00' : null),
+                    'source' => 'scholar',
+                ];
+            });
+
+            return collect($manualDocs)
+                ->concat($scopusDocs)
+                ->concat($scholarDocs)
+                ->sortByDesc('created_at')
+                ->values();
         };
 
         if (Cache::supportsTags()) {

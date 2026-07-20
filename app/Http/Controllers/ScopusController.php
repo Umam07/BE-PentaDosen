@@ -403,7 +403,7 @@ class ScopusController extends Controller
         \App\Models\ActivityLog::log($user->id, 'Sync Scopus', 'User melakukan sinkronisasi data Scopus');
 
         if (Cache::supportsTags()) {
-            Cache::tags(['stats', 'leaderboard', 'lecturers'])->flush();
+            Cache::tags(['stats', 'leaderboard', 'lecturers', 'admin_documents', 'documents'])->flush();
         } else {
             Cache::flush();
         }

@@ -141,7 +141,7 @@ class ScholarController extends Controller
         \App\Models\ActivityLog::log($user->id, 'Sync Scholar', 'User melakukan sinkronisasi data Google Scholar');
 
         if (Cache::supportsTags()) {
-            Cache::tags(['stats', 'leaderboard', 'lecturers'])->flush();
+            Cache::tags(['stats', 'leaderboard', 'lecturers', 'admin_documents', 'documents'])->flush();
         } else {
             Cache::flush();
         }
