@@ -241,20 +241,53 @@ class DocumentController extends Controller
 
     public function getUserDocuments($id)
     {
-        $cacheKey = "user_documents_{$id}";
-        $fetchData = function () use ($id) {
-            return Document::with('penelitian')->where('user_id', $id)->orderBy('published_at', 'desc')->get();
-        };
+        $manualDocs = Document::with('penelitian')->where('user_id', $id)->orderBy('published_at', 'desc')->get();
 
-        if (Cache::supportsTags()) {
-            $documents = Cache::tags(['documents', "user_documents_{$id}"])->remember($cacheKey, 3600, $fetchData);
-        } else {
-            $documents = Cache::remember($cacheKey, 3600, $fetchData);
-        }
+        $scopusDocs = \App\Models\ScopusPublication::where('user_id', $id)->get()->map(function($pub) {
+            return [
+                'id' => 'scopus_' . $pub->id,
+                'title' => $pub->title,
+                'category' => 'Jurnal Internasional',
+                'published_at' => $pub->year ? ($pub->year . '-01-01') : null,
+                'quartile' => $pub->quartile,
+                'author_role' => $pub->author_role,
+                'author_order' => $pub->author_order,
+                'total_authors' => $pub->total_authors,
+                'is_corresponding' => (bool)$pub->is_corresponding,
+                'is_hyperauthor' => (bool)$pub->is_hyperauthor,
+                'status' => 'Approved',
+                'awarded_points' => $pub->awarded_points ?: 0,
+                'file_url' => '-',
+                'source' => 'scopus',
+                'source_id' => $pub->id,
+            ];
+        });
+
+        $scholarDocs = \App\Models\ScholarPublication::where('user_id', $id)->get()->map(function($pub) {
+            return [
+                'id' => 'scholar_' . $pub->id,
+                'title' => $pub->title,
+                'category' => 'Jurnal Nasional',
+                'published_at' => $pub->year ? ($pub->year . '-01-01') : null,
+                'quartile' => null,
+                'author_role' => null,
+                'author_order' => null,
+                'total_authors' => null,
+                'is_corresponding' => false,
+                'is_hyperauthor' => false,
+                'status' => 'Approved',
+                'awarded_points' => 20, // Jurnal Nasional default weight is 20
+                'file_url' => '-',
+                'source' => 'scholar',
+                'source_id' => $pub->id,
+            ];
+        });
+
+        $allDocs = collect($manualDocs)->concat($scopusDocs)->concat($scholarDocs)->sortByDesc('published_at')->values();
 
         return response()->json([
             'success' => true,
-            'documents' => $documents,
+            'documents' => $allDocs,
         ]);
     }
 
@@ -451,6 +484,87 @@ class DocumentController extends Controller
 
     public function destroy($id)
     {
+        if (str_starts_with($id, 'scopus_')) {
+            $realId = str_replace('scopus_', '', $id);
+            $pub = \App\Models\ScopusPublication::findOrFail($realId);
+            $userId = $pub->user_id;
+            $docTitle = $pub->title;
+            $pub->delete();
+
+            $user = User::find($userId);
+            if ($user) {
+                $user->recalculateKpiPoints();
+            }
+
+            if (Cache::supportsTags()) {
+                Cache::tags(["user_documents_{$userId}", 'documents', 'admin_documents', 'stats'])->flush();
+            } else {
+                Cache::forget("user_documents_{$userId}");
+                Cache::flush();
+            }
+
+            \App\Models\ActivityLog::log($userId, 'Delete Document', 'Dosen menghapus dokumen Scopus: ' . $docTitle);
+
+            return response()->json([
+                'success' => true,
+                'message' => 'Publikasi Scopus berhasil dihapus.',
+            ]);
+        }
+
+        if (str_starts_with($id, 'scholar_')) {
+            $realId = str_replace('scholar_', '', $id);
+            $pub = \App\Models\ScholarPublication::findOrFail($realId);
+            $userId = $pub->user_id;
+            $docTitle = $pub->title;
+            $pub->delete();
+
+            $user = User::find($userId);
+            if ($user) {
+                $user->recalculateKpiPoints();
+            }
+
+            if (Cache::supportsTags()) {
+                Cache::tags(["user_documents_{$userId}", 'documents', 'admin_documents', 'stats'])->flush();
+            } else {
+                Cache::forget("user_documents_{$userId}");
+                Cache::flush();
+            }
+
+            \App\Models\ActivityLog::log($userId, 'Delete Document', 'Dosen menghapus dokumen Scholar: ' . $docTitle);
+
+            return response()->json([
+                'success' => true,
+                'message' => 'Publikasi Google Scholar berhasil dihapus.',
+            ]);
+        }
+
+        if (str_starts_with($id, 'openalex_')) {
+            $realId = str_replace('openalex_', '', $id);
+            $pub = \App\Models\OpenalexPublication::findOrFail($realId);
+            $userId = $pub->user_id;
+            $docTitle = $pub->title;
+            $pub->delete();
+
+            $user = User::find($userId);
+            if ($user) {
+                $user->recalculateKpiPoints();
+            }
+
+            if (Cache::supportsTags()) {
+                Cache::tags(["user_documents_{$userId}", 'documents', 'admin_documents', 'stats'])->flush();
+            } else {
+                Cache::forget("user_documents_{$userId}");
+                Cache::flush();
+            }
+
+            \App\Models\ActivityLog::log($userId, 'Delete Document', 'Dosen menghapus dokumen OpenAlex: ' . $docTitle);
+
+            return response()->json([
+                'success' => true,
+                'message' => 'Publikasi OpenAlex berhasil dihapus.',
+            ]);
+        }
+
         $doc = Document::findOrFail($id);
 
         // Lock: cannot delete if already verified or approved
@@ -460,8 +574,6 @@ class DocumentController extends Controller
                 'message' => 'Dokumen yang sudah diverifikasi/disetujui tidak dapat dihapus.',
             ], 403);
         }
-
-        // No inline decrement here, we'll recalculate the sum after delete
 
         // Delete stored file
         if ($doc->file_url && $doc->file_url !== '-' && $doc->file_url !== '') {
