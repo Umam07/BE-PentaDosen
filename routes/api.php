@@ -23,11 +23,11 @@ Route::middleware(['throttle:auth'])->group(function () {
 Route::middleware(['throttle:api'])->group(function () {
     Route::get('/users/{id}', [UserController::class, 'profile']);
     Route::post('/users/{id}/scholar', [ScholarController::class, 'updateScholarId']);
-    Route::post('/users/{id}/sync', [ScholarController::class, 'sync'])->middleware('throttle:3,1');
+    Route::post('/users/{id}/sync', [ScholarController::class, 'sync'])->middleware('throttle:60,1');
     Route::get('/scholar/check/{scholar_id}', [ScholarController::class, 'checkId']);
     
     Route::post('/users/{id}/scopus', [ScopusController::class, 'updateScopusId']);
-    Route::post('/users/{id}/sync-scopus', [ScopusController::class, 'sync'])->middleware('throttle:3,1');
+    Route::post('/users/{id}/sync-scopus', [ScopusController::class, 'sync'])->middleware('throttle:60,1');
     Route::get('/scopus/check/{scopus_id}', [ScopusController::class, 'checkId']);
     Route::put('/scopus-publications/{id}/quartile', [ScopusController::class, 'updateQuartile']);
     Route::put('/scopus-publications/{id}/corresponding', [ScopusController::class, 'updateCorresponding']);
