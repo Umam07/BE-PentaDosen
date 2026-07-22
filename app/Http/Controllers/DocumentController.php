@@ -616,6 +616,16 @@ class DocumentController extends Controller
         if ($type === 'penelitian') {
             $penelitian = \App\Models\Penelitian::findOrFail($id);
             $history = $penelitian->history()->with('user:id,name,role')->get();
+        } elseif (is_string($id) && (str_starts_with($id, 'scopus_') || str_starts_with($id, 'scholar_'))) {
+            $history = [
+                [
+                    'id' => 1,
+                    'action' => 'Sinkronisasi Otomatis API',
+                    'notes' => 'Dokumen disinkronkan secara otomatis dari API eksternal.',
+                    'created_at' => now()->toDateTimeString(),
+                    'user' => null
+                ]
+            ];
         } else {
             $doc = Document::findOrFail($id);
             $history = $doc->history()->with('user:id,name,role')->get();

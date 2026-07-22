@@ -403,7 +403,7 @@ class ScopusController extends Controller
         \App\Models\ActivityLog::log($user->id, 'Sync Scopus', 'User melakukan sinkronisasi data Scopus');
 
         if (Cache::supportsTags()) {
-            Cache::tags(['stats', 'leaderboard', 'lecturers'])->flush();
+            Cache::tags(['stats', 'leaderboard', 'lecturers', 'admin_documents', 'documents'])->flush();
         } else {
             Cache::flush();
         }
@@ -545,6 +545,7 @@ class ScopusController extends Controller
             // Analyse author frequency across publications
             $authorCounts = [];  // lowercase name => count
             $authorNames  = [];  // lowercase name => original casing
+            $authorOaIds  = [];  // lowercase name => OpenAlex ID
             $pubsAnalysed = 0;
 
             foreach (array_slice($dois, 0, 5) as $doi) { // Limit to 5 API calls for speed
@@ -558,7 +559,13 @@ class ScopusController extends Controller
                     if ($oaRes->successful()) {
                         foreach ($oaRes->json()['authorships'] ?? [] as $a) {
                             $n = $a['author']['display_name'] ?? '';
-                            if ($n) $authors[] = $n;
+                            $oaId = $a['author']['id'] ?? null;
+                            if ($n) {
+                                $authors[] = [
+                                    'name' => $n,
+                                    'id' => $oaId
+                                ];
+                            }
                         }
                     }
                 } catch (\Exception $e) {}
@@ -570,7 +577,12 @@ class ScopusController extends Controller
                         if ($crRes->successful()) {
                             foreach ($crRes->json()['message']['author'] ?? [] as $a) {
                                 $n = trim(($a['given'] ?? '') . ' ' . ($a['family'] ?? ''));
-                                if ($n) $authors[] = $n;
+                                if ($n) {
+                                    $authors[] = [
+                                        'name' => $n,
+                                        'id' => null
+                                    ];
+                                }
                             }
                         }
                     } catch (\Exception $e) {}
@@ -578,11 +590,16 @@ class ScopusController extends Controller
 
                 if (!empty($authors)) {
                     $pubsAnalysed++;
-                    foreach ($authors as $n) {
+                    foreach ($authors as $auth) {
+                        $n = $auth['name'];
+                        $oaId = $auth['id'];
                         $key = strtolower(trim($n));
                         $authorCounts[$key] = ($authorCounts[$key] ?? 0) + 1;
                         if (!isset($authorNames[$key])) {
                             $authorNames[$key] = $n;
+                        }
+                        if ($oaId && !isset($authorOaIds[$key])) {
+                            $authorOaIds[$key] = $oaId;
                         }
                     }
                 }
@@ -590,16 +607,15 @@ class ScopusController extends Controller
 
             // Determine the profile owner: author with highest frequency
             $name = null;
+            $matchedOaId = null;
             if ($pubsAnalysed >= 2 && !empty($authorCounts)) {
                 arsort($authorCounts);
                 $topKey   = array_key_first($authorCounts);
                 $topCount = $authorCounts[$topKey];
                 // Only trust if the top author appears in at least 2 publications
-                // and appears more than the second-most-frequent author
                 if ($topCount >= 2) {
                     $name = $authorNames[$topKey];
-                    // Also try to get a better affiliation from OpenAlex author profile
-                    // for the identified author (optional enhancement)
+                    $matchedOaId = $authorOaIds[$topKey] ?? null;
                 }
             }
 
@@ -611,20 +627,51 @@ class ScopusController extends Controller
             // Try to resolve a more accurate affiliation for the matched author name via OpenAlex
             if ($name) {
                 try {
-                    $oaAuthorRes = Http::timeout(6)
-                        ->withHeaders(['User-Agent' => 'PentaDosen/1.0 (mailto:admin@pentadosen.id)'])
-                        ->get("https://api.openalex.org/authors", [
-                            'filter' => 'display_name.search:' . $name
-                        ]);
-                    if ($oaAuthorRes->successful()) {
-                        $oaAuthorData = $oaAuthorRes->json();
-                        foreach ($oaAuthorData['results'] ?? [] as $r) {
-                            $insts = $r['last_known_institutions'] ?? [];
+                    $resolvedAffiliation = null;
+
+                    // 1. Direct OpenAlex ID fetch (highly accurate)
+                    if ($matchedOaId) {
+                        $cleanId = $matchedOaId;
+                        if (str_contains($matchedOaId, 'openalex.org/')) {
+                            $parts = explode('openalex.org/', $matchedOaId);
+                            $cleanId = end($parts);
+                        }
+                        $oaAuthorRes = Http::timeout(6)
+                            ->withHeaders(['User-Agent' => 'PentaDosen/1.0 (mailto:admin@pentadosen.id)'])
+                            ->get("https://api.openalex.org/authors/" . $cleanId);
+                        if ($oaAuthorRes->successful()) {
+                            $oaAuthorData = $oaAuthorRes->json();
+                            $insts = $oaAuthorData['last_known_institutions'] ?? [];
                             if (!empty($insts)) {
-                                $affiliation = $insts[0]['display_name'];
-                                break;
+                                $resolvedAffiliation = $insts[0]['display_name'];
                             }
                         }
+                    }
+
+                    // 2. Strict name search fallback
+                    if (!$resolvedAffiliation) {
+                        $oaAuthorRes = Http::timeout(6)
+                            ->withHeaders(['User-Agent' => 'PentaDosen/1.0 (mailto:admin@pentadosen.id)'])
+                            ->get("https://api.openalex.org/authors", [
+                                'filter' => 'display_name.search:' . $name
+                            ]);
+                        if ($oaAuthorRes->successful()) {
+                            $oaAuthorData = $oaAuthorRes->json();
+                            foreach ($oaAuthorData['results'] ?? [] as $r) {
+                                $foundName = $r['display_name'] ?? '';
+                                if ($this->isNameMatch($name, $foundName)) {
+                                    $insts = $r['last_known_institutions'] ?? [];
+                                    if (!empty($insts)) {
+                                        $resolvedAffiliation = $insts[0]['display_name'];
+                                        break;
+                                    }
+                                }
+                            }
+                        }
+                    }
+
+                    if ($resolvedAffiliation) {
+                        $affiliation = $resolvedAffiliation;
                     }
                 } catch (\Exception $e) {
                     // Silently ignore OpenAlex lookup errors
@@ -809,5 +856,46 @@ class ScopusController extends Controller
             }
         }
         return $matches >= 2 || (count($userWords) === 1 && $matches === 1);
+    }
+
+    private function isNameMatch(string $name1, string $name2): bool
+    {
+        $norm1 = strtolower(preg_replace('/[^a-z0-9 ]/i', '', $name1));
+        $norm2 = strtolower(preg_replace('/[^a-z0-9 ]/i', '', $name2));
+        
+        $titles = ['skom', 'mkom', 'dr', 'drg', 'ssi', 'mkes', 'spsi', 'mpsi', 'sh', 'mh', 'prof', 'ss', 'mt', 'st'];
+        foreach ($titles as $t) {
+            $norm1 = str_replace($t, '', $norm1);
+            $norm2 = str_replace($t, '', $norm2);
+        }
+        
+        $words1 = array_values(array_filter(explode(' ', trim($norm1))));
+        $words2 = array_values(array_filter(explode(' ', trim($norm2))));
+        
+        if (empty($words1) || empty($words2)) {
+            return false;
+        }
+        
+        // If it's a single word search name, match must be exactly that single word (or very close)
+        if (count($words1) === 1) {
+            return count($words2) === 1 && $words1[0] === $words2[0];
+        }
+        
+        // Otherwise, make sure all words in words1 exist in words2 or match initials
+        foreach ($words1 as $w) {
+            $matched = false;
+            foreach ($words2 as $w2) {
+                if ($w === $w2 || (strlen($w) === 1 && str_starts_with($w2, $w)) || (strlen($w2) === 1 && str_starts_with($w, $w2))) {
+                    $matched = true;
+                    break;
+                }
+            }
+            if (!$matched) {
+                return false;
+            }
+        }
+        
+        // Also ensure word counts don't differ by too much (e.g. at most 1 extra word)
+        return abs(count($words1) - count($words2)) <= 1;
     }
 }
