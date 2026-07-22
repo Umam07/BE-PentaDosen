@@ -85,11 +85,11 @@ class DatabaseSeeder extends Seeder
         // Lecturers (Dosen)
         User::updateOrCreate(
             ['email' => 'dosen1@univ.edu'],
-            ['name' => 'Chandra Prasetyo Utomo, S.Kom, M.Kom.', 'role' => 'dosen', 'scholar_id' => '86JsILAAAAAJ&hl', 'scopus_id' => '36656758200', 'fakultas' => 'Fakultas Teknologi Informasi', 'program_studi' => 'Teknik Informatika', 'password' => bcrypt('password'), 'total_kpi_points' => 0]
+            ['name' => 'Chandra Prasetyo Utomo, S.Kom, M.Kom.', 'role' => 'dosen', 'scholar_id' => '86JsILAAAAAJ', 'scopus_id' => '36656758200', 'fakultas' => 'Fakultas Teknologi Informasi', 'program_studi' => 'Teknik Informatika', 'password' => bcrypt('password'), 'total_kpi_points' => 0]
         );
         User::updateOrCreate(
             ['email' => 'dosen2@univ.edu'],
-            ['name' => 'Kholis Ernawati, Dr. S.Si., M.Kes.', 'role' => 'dosen', 'scholar_id' => 'kvM1yXcAAAAJ&hl', 'scopus_id' => '57210110753', 'fakultas' => 'Fakultas Kedokteran', 'program_studi' => 'Kedokteran', 'password' => bcrypt('password'), 'total_kpi_points' => 0]
+            ['name' => 'Kholis Ernawati, Dr. S.Si., M.Kes.', 'role' => 'dosen', 'scholar_id' => 'kvM1yXcAAAAJ', 'scopus_id' => '57210110753', 'fakultas' => 'Fakultas Kedokteran', 'program_studi' => 'Kedokteran', 'password' => bcrypt('password'), 'total_kpi_points' => 0]
         );
         User::updateOrCreate(
             ['email' => 'kiki@univ.edu'],
@@ -97,15 +97,15 @@ class DatabaseSeeder extends Seeder
         );
         User::updateOrCreate(
             ['email' => 'danis@univ.edu'],
-            ['name' => 'Rafi Danis', 'role' => 'dosen', 'scholar_id' => 'ghULz5YAAAAJ&hl', 'scopus_id' => '57205016667', 'fakultas' => 'Fakultas Hukum', 'program_studi' => 'Hukum', 'password' => bcrypt('password'), 'total_kpi_points' => 0]
+            ['name' => 'Rafi Danis', 'role' => 'dosen', 'scholar_id' => 'ghULz5YAAAAJ', 'scopus_id' => '57205016667', 'fakultas' => 'Fakultas Hukum', 'program_studi' => 'Hukum', 'password' => bcrypt('password'), 'total_kpi_points' => 0]
         );
         User::updateOrCreate(
             ['email' => 'umam@univ.edu'],
-            ['name' => "Umamz", 'role' => 'dosen', 'scholar_id' => 'tBjAaI0AAAAJ&hl', 'scopus_id' => '57220091394', 'fakultas' => 'Fakultas Psikologi', 'program_studi' => 'Psikologi', 'password' => bcrypt('password'), 'total_kpi_points' => 0]
+            ['name' => "Umamz", 'role' => 'dosen', 'scholar_id' => 'tBjAaI0AAAAJ', 'scopus_id' => '57220091394', 'fakultas' => 'Fakultas Psikologi', 'program_studi' => 'Psikologi', 'password' => bcrypt('password'), 'total_kpi_points' => 0]
         );
         User::updateOrCreate(
             ['email' => 'dosen_fkg@univ.edu'],
-            ['name' => 'Dr. drg. H. Anton Rahardjo', 'role' => 'dosen', 'scholar_id' => 'FRgV4kAAAAAJ&hl', 'scopus_id' => '57205060934', 'fakultas' => 'Fakultas Kedokteran Gigi', 'program_studi' => 'Kedokteran Gigi', 'password' => bcrypt('password'), 'total_kpi_points' => 0]
+            ['name' => 'Dr. drg. H. Anton Rahardjo', 'role' => 'dosen', 'scholar_id' => 'FRgV4kAAAAAJ', 'scopus_id' => '57205060934', 'fakultas' => 'Fakultas Kedokteran Gigi', 'program_studi' => 'Kedokteran Gigi', 'password' => bcrypt('password'), 'total_kpi_points' => 0]
         );
 
         // Administration & Leadership

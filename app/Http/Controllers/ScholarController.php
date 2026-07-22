@@ -13,11 +13,23 @@ use Illuminate\Support\Facades\Cache;
 
 class ScholarController extends Controller
 {
+    private function cleanScholarId(?string $id): ?string
+    {
+        if (!$id) return null;
+        $id = trim($id);
+        if (preg_match('/user=([a-zA-Z0-9_-]+)/', $id, $matches)) {
+            return $matches[1];
+        }
+        $clean = preg_replace('/[&?].*$/', '', $id);
+        return trim($clean);
+    }
+
     public function sync(Request $request, $id)
     {
         $user = User::findOrFail($id);
+        $scholarId = $this->cleanScholarId($user->scholar_id);
 
-        if (!$user->scholar_id) {
+        if (!$scholarId) {
             return response()->json(['error' => 'Scholar ID not found'], 400);
         }
 
@@ -28,7 +40,7 @@ class ScholarController extends Controller
 
         $response = Http::timeout(15)->get('https://serpapi.com/search.json', [
             'engine' => 'google_scholar_author',
-            'author_id' => $user->scholar_id,
+            'author_id' => $scholarId,
             'api_key' => $apiKey
         ]);
 
@@ -151,8 +163,12 @@ class ScholarController extends Controller
 
     public function updateScholarId(Request $request, $id)
     {
+        $rawScholarId = $request->scholar_id;
+        $cleanId = $this->cleanScholarId($rawScholarId);
+        $request->merge(['scholar_id' => $cleanId]);
+
         $request->validate([
-            'scholar_id' => ['nullable', 'string', 'max:20', 'regex:/^[a-zA-Z0-9_-]+$/']
+            'scholar_id' => ['nullable', 'string', 'max:50', 'regex:/^[a-zA-Z0-9_-]+$/']
         ]);
         
         $user = User::findOrFail($id);
@@ -185,6 +201,11 @@ class ScholarController extends Controller
 
     public function checkId($scholar_id)
     {
+        $scholar_id = $this->cleanScholarId($scholar_id);
+        if (!$scholar_id) {
+            return response()->json(['error' => 'Invalid Google Scholar ID format'], 400);
+        }
+
         $cached = Cache::remember("scholar_check_{$scholar_id}", 86400, function() use ($scholar_id) {
             $apiKey = config('services.serpapi.key');
             if (!$apiKey) {
