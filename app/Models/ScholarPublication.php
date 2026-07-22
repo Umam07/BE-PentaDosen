@@ -13,6 +13,13 @@ class ScholarPublication extends Model
         'journal',
         'year',
         'citations',
+        'is_corresponding',
+        'is_corresponding_confirmed',
+    ];
+
+    protected $casts = [
+        'is_corresponding' => 'boolean',
+        'is_corresponding_confirmed' => 'boolean',
     ];
 
     public function user()

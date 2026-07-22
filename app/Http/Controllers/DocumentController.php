@@ -254,6 +254,7 @@ class DocumentController extends Controller
                 'author_order' => $pub->author_order,
                 'total_authors' => $pub->total_authors,
                 'is_corresponding' => (bool)$pub->is_corresponding,
+                'is_corresponding_confirmed' => (bool)$pub->is_corresponding_confirmed,
                 'is_hyperauthor' => (bool)$pub->is_hyperauthor,
                 'status' => 'Approved',
                 'awarded_points' => $pub->awarded_points ?: 0,
@@ -273,7 +274,8 @@ class DocumentController extends Controller
                 'author_role' => null,
                 'author_order' => null,
                 'total_authors' => null,
-                'is_corresponding' => false,
+                'is_corresponding' => (bool)$pub->is_corresponding,
+                'is_corresponding_confirmed' => (bool)$pub->is_corresponding_confirmed,
                 'is_hyperauthor' => false,
                 'status' => 'Approved',
                 'awarded_points' => 20, // Jurnal Nasional default weight is 20
@@ -621,6 +623,69 @@ class DocumentController extends Controller
         return response()->json([
             'success' => true,
             'history' => $history
+        ]);
+    }
+
+    public function updateCorresponding(Request $request, $id)
+    {
+        $request->validate([
+            'is_corresponding' => 'required|boolean'
+        ]);
+
+        $doc = Document::findOrFail($id);
+        $user = $doc->user;
+
+        \Illuminate\Support\Facades\DB::transaction(function () use ($doc, $user, $request) {
+            $doc->is_corresponding = $request->is_corresponding;
+            $doc->is_corresponding_confirmed = true;
+            $doc->awarded_points = round($doc->calculatePoints());
+            $doc->save();
+
+            $user->recalculateKpiPoints();
+        });
+
+        if (\Illuminate\Support\Facades\Cache::supportsTags()) {
+            \Illuminate\Support\Facades\Cache::tags(["user_documents_{$doc->user_id}", 'documents', 'admin_documents', 'stats'])->flush();
+        } else {
+            \Illuminate\Support\Facades\Cache::forget("user_documents_{$doc->user_id}");
+            \Illuminate\Support\Facades\Cache::flush();
+        }
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Corresponding status updated successfully',
+            'document' => $doc
+        ]);
+    }
+
+    public function updateCorrespondingScholar(Request $request, $id)
+    {
+        $request->validate([
+            'is_corresponding' => 'required|boolean'
+        ]);
+
+        $pub = \App\Models\ScholarPublication::findOrFail($id);
+        $user = $pub->user;
+
+        \Illuminate\Support\Facades\DB::transaction(function () use ($pub, $user, $request) {
+            $pub->is_corresponding = $request->is_corresponding;
+            $pub->is_corresponding_confirmed = true;
+            $pub->save();
+
+            $user->recalculateKpiPoints();
+        });
+
+        if (\Illuminate\Support\Facades\Cache::supportsTags()) {
+            \Illuminate\Support\Facades\Cache::tags(["user_documents_{$user->id}", 'documents', 'admin_documents', 'stats'])->flush();
+        } else {
+            \Illuminate\Support\Facades\Cache::forget("user_documents_{$user->id}");
+            \Illuminate\Support\Facades\Cache::flush();
+        }
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Corresponding status updated successfully',
+            'publication' => $pub
         ]);
     }
 }

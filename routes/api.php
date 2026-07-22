@@ -38,6 +38,8 @@ Route::middleware(['throttle:api'])->group(function () {
     Route::get('/users/{id}/documents', [DocumentController::class, 'getUserDocuments']);
     Route::get('/users/{id}/approved-penelitian', [DocumentController::class, 'getApprovedPenelitian']);
     Route::put('/documents/{id}', [DocumentController::class, 'update']);
+    Route::put('/documents/{id}/corresponding', [DocumentController::class, 'updateCorresponding']);
+    Route::put('/scholar-publications/{id}/corresponding', [DocumentController::class, 'updateCorrespondingScholar']);
     Route::delete('/documents/{id}', [DocumentController::class, 'destroy']);
     Route::get('/documents/{id}/history', [DocumentController::class, 'getHistory']);
     
