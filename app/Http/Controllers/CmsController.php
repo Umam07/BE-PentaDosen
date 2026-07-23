@@ -11,6 +11,7 @@ use App\Models\Faq;
 use App\Models\DocumentTemplate;
 use App\Models\Notification;
 use Illuminate\Support\Facades\Storage;
+use Illuminate\Support\Facades\Cache;
 use Carbon\Carbon;
 
 class CmsController extends Controller
@@ -356,6 +357,12 @@ class CmsController extends Controller
         }
 
         $user->save();
+
+        if (Cache::supportsTags()) {
+            Cache::tags(['admin_documents', 'documents', 'penelitian', 'stats', 'leaderboard', 'lecturers'])->flush();
+        } else {
+            Cache::flush();
+        }
 
         return response()->json([
             'success' => true, 

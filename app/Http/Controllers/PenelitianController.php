@@ -95,9 +95,15 @@ class PenelitianController extends Controller
             $dosen = User::find($request->user_id);
             $dosenName = $dosen ? $dosen->name : 'Dosen';
             $dosenFakultas = $dosen ? $dosen->fakultas : null;
+            $dosenProdi = $dosen ? $dosen->program_studi : null;
 
             $adminFakultasList = User::where('role', 'admin fakultas')
                 ->when($dosenFakultas, fn($q) => $q->where('fakultas', $dosenFakultas))
+                ->when($dosenProdi, fn($q) => $q->where(function($sub) use ($dosenProdi) {
+                    $sub->whereNull('program_studi')
+                        ->orWhere('program_studi', '')
+                        ->orWhere('program_studi', $dosenProdi);
+                }))
                 ->get();
             foreach ($adminFakultasList as $adminFakultas) {
                 Notification::send(
@@ -136,6 +142,9 @@ class PenelitianController extends Controller
                   if ($admin && $admin->fakultas) {
                       $query = Penelitian::whereHas('user', function($q) use ($admin) {
                           $q->where('fakultas', $admin->fakultas);
+                          if ($admin->program_studi) {
+                              $q->where('program_studi', $admin->program_studi);
+                          }
                       });
                       if ($all !== 'true') {
                           $query->where('status', 'Pending');

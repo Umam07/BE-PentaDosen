@@ -31,6 +31,9 @@ class AdminController extends Controller
                 if ($admin && $admin->fakultas) {
                     $query->whereHas('user', function ($q) use ($admin) {
                         $q->where('fakultas', $admin->fakultas);
+                        if ($admin->program_studi) {
+                            $q->where('program_studi', $admin->program_studi);
+                        }
                     });
                 }
             } elseif ($role === 'admin penelitian') {
@@ -64,18 +67,23 @@ class AdminController extends Controller
 
         $fetchData = function () use ($role, $userId) {
             $adminFakultas = null;
+            $adminProdi = null;
             if ($role === 'admin fakultas') {
                 $admin = User::find($userId);
                 if ($admin && $admin->fakultas) {
                     $adminFakultas = $admin->fakultas;
+                    $adminProdi = $admin->program_studi;
                 }
             }
 
             // 1. Fetch manual documents
             $query = Document::with('user');
             if ($adminFakultas) {
-                $query->whereHas('user', function ($q) use ($adminFakultas) {
+                $query->whereHas('user', function ($q) use ($adminFakultas, $adminProdi) {
                     $q->where('fakultas', $adminFakultas);
+                    if ($adminProdi) {
+                        $q->where('program_studi', $adminProdi);
+                    }
                 });
             }
 
@@ -105,8 +113,11 @@ class AdminController extends Controller
             // 2. Fetch Scopus Publications
             $scopusQuery = ScopusPublication::with('user');
             if ($adminFakultas) {
-                $scopusQuery->whereHas('user', function ($q) use ($adminFakultas) {
+                $scopusQuery->whereHas('user', function ($q) use ($adminFakultas, $adminProdi) {
                     $q->where('fakultas', $adminFakultas);
+                    if ($adminProdi) {
+                        $q->where('program_studi', $adminProdi);
+                    }
                 });
             }
 
@@ -148,8 +159,11 @@ class AdminController extends Controller
             // 3. Fetch Scholar Publications
             $scholarQuery = ScholarPublication::with('user');
             if ($adminFakultas) {
-                $scholarQuery->whereHas('user', function ($q) use ($adminFakultas) {
+                $scholarQuery->whereHas('user', function ($q) use ($adminFakultas, $adminProdi) {
                     $q->where('fakultas', $adminFakultas);
+                    if ($adminProdi) {
+                        $q->where('program_studi', $adminProdi);
+                    }
                 });
             }
 
@@ -221,6 +235,9 @@ class AdminController extends Controller
                 $admin = User::find($userId);
                 if ($admin && $admin->fakultas) {
                     $query->where('fakultas', $admin->fakultas);
+                    if ($admin->program_studi) {
+                        $query->where('program_studi', $admin->program_studi);
+                    }
                 }
             }
 

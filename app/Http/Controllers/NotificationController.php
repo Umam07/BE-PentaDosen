@@ -13,10 +13,53 @@ class NotificationController extends Controller
      */
     public function index($userId)
     {
+        $user = \App\Models\User::find($userId);
+
         $notifications = Notification::where('user_id', $userId)
             ->orderBy('created_at', 'desc')
-            ->limit(50)
+            ->limit(100)
             ->get();
+
+        if ($user && $user->role === 'admin fakultas') {
+            $adminFakultas = $user->fakultas;
+            $adminProdi = $user->program_studi;
+
+            $notifications = $notifications->filter(function ($notif) use ($adminFakultas, $adminProdi) {
+                $data = $notif->data;
+                if (!is_array($data)) {
+                    return true;
+                }
+
+                $docId = $data['doc_id'] ?? null;
+                $penelitianId = $data['penelitian_id'] ?? null;
+
+                if ($docId) {
+                    $doc = \App\Models\Document::with('user')->find($docId);
+                    if ($doc && $doc->user) {
+                        if ($adminFakultas && $doc->user->fakultas !== $adminFakultas) {
+                            return false;
+                        }
+                        if ($adminProdi && $doc->user->program_studi !== $adminProdi) {
+                            return false;
+                        }
+                    }
+                }
+
+                if ($penelitianId) {
+                    $pen = \App\Models\Penelitian::with('user')->find($penelitianId);
+                    if ($pen && $pen->user) {
+                        if ($adminFakultas && $pen->user->fakultas !== $adminFakultas) {
+                            return false;
+                        }
+                        if ($adminProdi && $pen->user->program_studi !== $adminProdi) {
+                            return false;
+                        }
+                    }
+                }
+
+                return true;
+            })->values();
+        }
 
         $unreadCount = $notifications->where('is_read', false)->count();
 

@@ -205,10 +205,16 @@ class DocumentController extends Controller
             $dosen = User::find($request->user_id);
             $dosenName = $dosen ? $dosen->name : 'Dosen';
             $dosenFakultas = $dosen ? $dosen->fakultas : null;
+            $dosenProdi = $dosen ? $dosen->program_studi : null;
 
-            // Notify Admin Fakultas of the same fakultas
+            // Notify Admin Fakultas of the same fakultas and prodi (if set)
             $adminFakultasList = User::where('role', 'admin fakultas')
                 ->when($dosenFakultas, fn($q) => $q->where('fakultas', $dosenFakultas))
+                ->when($dosenProdi, fn($q) => $q->where(function($sub) use ($dosenProdi) {
+                    $sub->whereNull('program_studi')
+                        ->orWhere('program_studi', '')
+                        ->orWhere('program_studi', $dosenProdi);
+                }))
                 ->get();
             foreach ($adminFakultasList as $adminFakultas) {
                 Notification::send(
@@ -241,51 +247,60 @@ class DocumentController extends Controller
 
     public function getUserDocuments($id)
     {
-        $manualDocs = Document::with('penelitian')->where('user_id', $id)->orderBy('published_at', 'desc')->get();
+        $cacheKey = "user_documents_{$id}";
+        $fetchData = function () use ($id) {
+            $manualDocs = Document::with('penelitian')->where('user_id', $id)->orderBy('published_at', 'desc')->get();
 
-        $scopusDocs = \App\Models\ScopusPublication::where('user_id', $id)->get()->map(function($pub) {
-            return [
-                'id' => 'scopus_' . $pub->id,
-                'title' => $pub->title,
-                'category' => 'Jurnal Internasional',
-                'published_at' => $pub->year ? ($pub->year . '-01-01') : null,
-                'quartile' => $pub->quartile,
-                'author_role' => $pub->author_role,
-                'author_order' => $pub->author_order,
-                'total_authors' => $pub->total_authors,
-                'is_corresponding' => (bool)$pub->is_corresponding,
-                'is_corresponding_confirmed' => (bool)$pub->is_corresponding_confirmed,
-                'is_hyperauthor' => (bool)$pub->is_hyperauthor,
-                'status' => 'Approved',
-                'awarded_points' => $pub->awarded_points ?: 0,
-                'file_url' => '-',
-                'source' => 'scopus',
-                'source_id' => $pub->id,
-            ];
-        });
+            $scopusDocs = \App\Models\ScopusPublication::where('user_id', $id)->get()->map(function($pub) {
+                return [
+                    'id' => 'scopus_' . $pub->id,
+                    'title' => $pub->title,
+                    'category' => 'Jurnal Internasional',
+                    'published_at' => $pub->year ? ($pub->year . '-01-01') : null,
+                    'quartile' => $pub->quartile,
+                    'author_role' => $pub->author_role,
+                    'author_order' => $pub->author_order,
+                    'total_authors' => $pub->total_authors,
+                    'is_corresponding' => (bool)$pub->is_corresponding,
+                    'is_corresponding_confirmed' => (bool)$pub->is_corresponding_confirmed,
+                    'is_hyperauthor' => (bool)$pub->is_hyperauthor,
+                    'status' => 'Approved',
+                    'awarded_points' => $pub->awarded_points ?: 0,
+                    'file_url' => '-',
+                    'source' => 'scopus',
+                    'source_id' => $pub->id,
+                ];
+            });
 
-        $scholarDocs = \App\Models\ScholarPublication::where('user_id', $id)->get()->map(function($pub) {
-            return [
-                'id' => 'scholar_' . $pub->id,
-                'title' => $pub->title,
-                'category' => 'Jurnal Nasional',
-                'published_at' => $pub->year ? ($pub->year . '-01-01') : null,
-                'quartile' => null,
-                'author_role' => null,
-                'author_order' => null,
-                'total_authors' => null,
-                'is_corresponding' => (bool)$pub->is_corresponding,
-                'is_corresponding_confirmed' => (bool)$pub->is_corresponding_confirmed,
-                'is_hyperauthor' => false,
-                'status' => 'Approved',
-                'awarded_points' => 20, // Jurnal Nasional default weight is 20
-                'file_url' => '-',
-                'source' => 'scholar',
-                'source_id' => $pub->id,
-            ];
-        });
+            $scholarDocs = \App\Models\ScholarPublication::where('user_id', $id)->get()->map(function($pub) {
+                return [
+                    'id' => 'scholar_' . $pub->id,
+                    'title' => $pub->title,
+                    'category' => 'Jurnal Nasional',
+                    'published_at' => $pub->year ? ($pub->year . '-01-01') : null,
+                    'quartile' => null,
+                    'author_role' => null,
+                    'author_order' => null,
+                    'total_authors' => null,
+                    'is_corresponding' => (bool)$pub->is_corresponding,
+                    'is_corresponding_confirmed' => (bool)$pub->is_corresponding_confirmed,
+                    'is_hyperauthor' => false,
+                    'status' => 'Approved',
+                    'awarded_points' => 20, // Jurnal Nasional default weight is 20
+                    'file_url' => '-',
+                    'source' => 'scholar',
+                    'source_id' => $pub->id,
+                ];
+            });
 
-        $allDocs = collect($manualDocs)->concat($scopusDocs)->concat($scholarDocs)->sortByDesc('published_at')->values();
+            return collect($manualDocs)->concat($scopusDocs)->concat($scholarDocs)->sortByDesc('published_at')->values();
+        };
+
+        if (\Illuminate\Support\Facades\Cache::supportsTags()) {
+            $allDocs = \Illuminate\Support\Facades\Cache::tags(["user_documents_{$id}", 'documents'])->remember($cacheKey, 3600, $fetchData);
+        } else {
+            $allDocs = \Illuminate\Support\Facades\Cache::remember($cacheKey, 3600, $fetchData);
+        }
 
         return response()->json([
             'success' => true,
