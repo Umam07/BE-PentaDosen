@@ -249,9 +249,64 @@ class DocumentController extends Controller
     {
         $cacheKey = "user_documents_{$id}";
         $fetchData = function () use ($id) {
-            $manualDocs = Document::with('penelitian')->where('user_id', $id)->orderBy('published_at', 'desc')->get();
+            $scopusPubs = \App\Models\ScopusPublication::where('user_id', $id)->get();
+            $scopusMap = [];
+            foreach ($scopusPubs as $sp) {
+                $norm = strtolower(preg_replace('/[^a-z0-9]/', '', $sp->title));
+                if ($norm) {
+                    $scopusMap[$norm] = $sp;
+                }
+            }
 
-            $scopusDocs = \App\Models\ScopusPublication::where('user_id', $id)->get()->map(function($pub) {
+            $scholarPubs = \App\Models\ScholarPublication::where('user_id', $id)->get();
+            $scholarMap = [];
+            foreach ($scholarPubs as $sp) {
+                $norm = strtolower(preg_replace('/[^a-z0-9]/', '', $sp->title));
+                if ($norm) {
+                    $scholarMap[$norm] = $sp;
+                }
+            }
+
+            $manualDocs = Document::with('penelitian')->where('user_id', $id)->orderBy('published_at', 'desc')->get()->map(function($doc) use ($scopusMap, $scholarMap) {
+                $arr = $doc->toArray();
+                $norm = strtolower(preg_replace('/[^a-z0-9]/', '', $doc->title));
+
+                if (isset($scholarMap[$norm])) {
+                    $sp = $scholarMap[$norm];
+                    $citations = (int)($sp->citations ?? 0);
+                    $arr['source'] = 'scholar';
+                    $arr['citations'] = $citations;
+                    $arr['source_id'] = $sp->id;
+                    $arr['category'] = 'Jurnal Nasional';
+                    $arr['awarded_points'] = (int)round(0.5 + ($citations > 0 ? 0.5 : 0) + min($citations, 500) * 0.25);
+                } elseif (isset($scopusMap[$norm])) {
+                    $sp = $scopusMap[$norm];
+                    $arr['source'] = 'scopus';
+                    $arr['source_id'] = $sp->id;
+                    $arr['category'] = 'Jurnal Internasional';
+                    $arr['quartile'] = $sp->quartile;
+                    $arr['author_role'] = $sp->author_role;
+                    $arr['author_order'] = $sp->author_order;
+                    $arr['total_authors'] = $sp->total_authors;
+                    $arr['is_corresponding'] = (bool)$sp->is_corresponding;
+                    $arr['is_corresponding_confirmed'] = (bool)$sp->is_corresponding_confirmed;
+                    $arr['is_hyperauthor'] = (bool)$sp->is_hyperauthor;
+                    $arr['awarded_points'] = $sp->awarded_points ?: $arr['awarded_points'];
+                } elseif ($doc->category === 'Google Scholar') {
+                    $arr['category'] = 'Jurnal Nasional';
+                    $arr['source'] = 'scholar';
+                    $arr['citations'] = (int)($arr['citations'] ?? 0);
+                }
+
+                return $arr;
+            });
+
+            $existingManualTitles = collect($manualDocs)->pluck('title')->map(fn($t) => strtolower(preg_replace('/[^a-z0-9]/', '', $t)))->filter()->toArray();
+
+            $scopusDocs = $scopusPubs->filter(function($pub) use ($existingManualTitles) {
+                $norm = strtolower(preg_replace('/[^a-z0-9]/', '', $pub->title));
+                return !in_array($norm, $existingManualTitles);
+            })->map(function($pub) {
                 return [
                     'id' => 'scopus_' . $pub->id,
                     'title' => $pub->title,
@@ -270,14 +325,20 @@ class DocumentController extends Controller
                     'source' => 'scopus',
                     'source_id' => $pub->id,
                 ];
-            });
+            })->values();
 
-            $scholarDocs = \App\Models\ScholarPublication::where('user_id', $id)->get()->map(function($pub) {
+            $scholarDocs = $scholarPubs->filter(function($pub) use ($existingManualTitles) {
+                $norm = strtolower(preg_replace('/[^a-z0-9]/', '', $pub->title));
+                return !in_array($norm, $existingManualTitles);
+            })->map(function($pub) {
+                $citations = (int)($pub->citations ?? 0);
+                $awardedPoints = (int)round(0.5 + ($citations > 0 ? 0.5 : 0) + min($citations, 500) * 0.25);
                 return [
                     'id' => 'scholar_' . $pub->id,
                     'title' => $pub->title,
                     'category' => 'Jurnal Nasional',
                     'published_at' => $pub->year ? ($pub->year . '-01-01') : null,
+                    'citations' => $citations,
                     'quartile' => null,
                     'author_role' => null,
                     'author_order' => null,
@@ -286,19 +347,21 @@ class DocumentController extends Controller
                     'is_corresponding_confirmed' => (bool)$pub->is_corresponding_confirmed,
                     'is_hyperauthor' => false,
                     'status' => 'Approved',
-                    'awarded_points' => 20, // Jurnal Nasional default weight is 20
+                    'awarded_points' => $awardedPoints,
                     'file_url' => '-',
                     'source' => 'scholar',
                     'source_id' => $pub->id,
                 ];
-            });
+            })->values();
 
             return collect($manualDocs)->concat($scopusDocs)->concat($scholarDocs)->sortByDesc('published_at')->values();
         };
 
         if (\Illuminate\Support\Facades\Cache::supportsTags()) {
+            \Illuminate\Support\Facades\Cache::tags(["user_documents_{$id}", 'documents'])->flush();
             $allDocs = \Illuminate\Support\Facades\Cache::tags(["user_documents_{$id}", 'documents'])->remember($cacheKey, 3600, $fetchData);
         } else {
+            \Illuminate\Support\Facades\Cache::forget($cacheKey);
             $allDocs = \Illuminate\Support\Facades\Cache::remember($cacheKey, 3600, $fetchData);
         }
 
