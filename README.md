@@ -89,10 +89,16 @@ Setelah menjalankan `php artisan db:seed`, Anda dapat menggunakan akun berikut u
 
 | Role | Email | Password |
 | :--- | :--- | :--- |
+| **Super Admin** | `superadmin@univ.edu` | `P3nt4D0s3nSuper@2026!` |
 | **Admin Penelitian** | `penelitian@univ.edu` | `password` |
-| **Admin Fakultas** | `fakultas@univ.edu` | `password` |
-| **Dosen** | `umam@univ.edu` | `password` |
-| **Pimpinan** | `rektor@univ.edu` | `password` |
+| **Admin Fakultas (FTI)** | `fakultas@univ.edu` | `password` |
+| **Admin Fakultas (FEB)** | `fakultas.feb@univ.edu` | `password` |
+| **Admin Fakultas (FK)** | `fakultas.fk@univ.edu` | `password` |
+| **Admin Fakultas (FH)** | `fakultas.fh@univ.edu` | `password` |
+| **Dosen (FTI)** | `dosen1@univ.edu` | `password` |
+| **Dosen (FEB)** | `nurul.huda@univ.edu` | `password` |
+| **Dosen (FK)** | `kholis.ernawati@univ.edu` | `password` |
+| **Dosen (FH)** | `endang.purwaningsih@univ.edu` | `password` |
 
 ---
 
