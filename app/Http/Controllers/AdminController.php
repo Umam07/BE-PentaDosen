@@ -20,41 +20,34 @@ class AdminController extends Controller
     {
         $role = $request->query('role');
         $userId = $request->query('user_id');
-        $cacheKey = "admin_pending_documents_{$role}_{$userId}";
 
-        $fetchData = function () use ($role, $userId) {
-            $query = Document::with('user');
+        $query = Document::with('user');
 
-            if ($role === 'admin fakultas') {
-                $query->where('status', 'Pending');
-                $admin = User::find($userId);
-                if ($admin && $admin->fakultas) {
-                    $query->whereHas('user', function ($q) use ($admin) {
-                        $q->where('fakultas', $admin->fakultas);
-                        if ($admin->program_studi) {
-                            $q->where('program_studi', $admin->program_studi);
-                        }
-                    });
-                }
-            } elseif ($role === 'admin penelitian') {
-                $query->where('status', 'Verified by Fakultas');
-            } else {
-                // Default behavior if role is unknown or not provided
-                $query->where('status', 'Pending');
-            }
-
-            return $query->orderBy('created_at', 'asc')
-                ->get()
-                ->map(function ($doc) {
-                    return array_merge($doc->toArray(), ['user_name' => $doc->user->name, 'fakultas' => $doc->user->fakultas]);
+        if ($role === 'admin fakultas') {
+            $query->where('status', 'Pending');
+            $admin = User::find($userId);
+            if ($admin && $admin->fakultas) {
+                $query->whereHas('user', function ($q) use ($admin) {
+                    $q->where('fakultas', $admin->fakultas);
+                    if ($admin->program_studi) {
+                        $q->where('program_studi', $admin->program_studi);
+                    }
                 });
-        };
-
-        if (Cache::supportsTags()) {
-            $docs = Cache::tags(['admin_documents', 'documents'])->remember($cacheKey, 3600, $fetchData);
+            }
+        } elseif ($role === 'admin penelitian') {
+            $query->where('status', 'Verified by Fakultas');
         } else {
-            $docs = Cache::remember($cacheKey, 3600, $fetchData);
+            $query->where('status', 'Pending');
         }
+
+        $docs = $query->orderBy('created_at', 'asc')
+            ->get()
+            ->map(function ($doc) {
+                return array_merge($doc->toArray(), [
+                    'user_name' => $doc->user ? $doc->user->name : '',
+                    'fakultas' => $doc->user ? $doc->user->fakultas : '',
+                ]);
+            });
 
         return response()->json(['documents' => $docs]);
     }
@@ -348,16 +341,11 @@ class AdminController extends Controller
 
         if ($status === 'Approved') {
             if ($role === 'admin fakultas') {
+                if ($doc->status !== 'Pending') {
+                    return response()->json(['success' => false, 'message' => 'Dokumen sudah diverifikasi fakultas atau tahap admin.'], 400);
+                }
                 // If fakultas approves, move to next stage
                 $doc->update(['status' => 'Verified by Fakultas']);
-
-                // Clear cache on stage movement
-                if (Cache::supportsTags()) {
-                    Cache::tags(["user_documents_{$doc->user_id}", 'documents', 'admin_documents'])->flush();
-                } else {
-                    Cache::forget("user_documents_{$doc->user_id}");
-                    Cache::flush();
-                }
 
                 \App\Models\DocumentHistory::create([
                     'document_id' => $doc->id,
@@ -365,11 +353,8 @@ class AdminController extends Controller
                     'action' => 'Diverifikasi Fakultas',
                     'notes' => null
                 ]);
-
-                return response()->json(['success' => true, 'message' => 'Document verified by fakultas. Waiting for admin approval.']);
-            }
-
-            // Final Admin approval logic
+            } else {
+                // Final Admin approval logic
             $weight = PointWeight::where('category', $doc->category)->first();
             $categoryPoints = $weight ? $weight->weight_value : 0;
 
@@ -417,6 +402,7 @@ class AdminController extends Controller
                     'total_kpi_points' => round($totalDocPoints + $totalPenPoints + $totalScopusPoints)
                 ]);
             });
+            }
         } else {
             // Either admin fakultas or admin lppm can reject
             $doc->update([

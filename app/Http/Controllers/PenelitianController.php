@@ -159,6 +159,13 @@ class PenelitianController extends Controller
             }
         };
 
+        if (($role === 'admin fakultas' || $role === 'admin penelitian') && $all !== 'true') {
+            return response()->json([
+                'success' => true,
+                'penelitian' => $fetchData(),
+            ]);
+        }
+
         if (Cache::supportsTags()) {
             $penelitian = Cache::tags(['penelitian'])->remember($cacheKey, 3600, $fetchData);
         } else {
@@ -196,43 +203,41 @@ class PenelitianController extends Controller
                     'action' => 'Diverifikasi Fakultas',
                     'notes' => null
                 ]);
+            } else {
+                // Admin Approval Logic
+                if ($role !== 'admin penelitian' && $penelitian->status !== 'Verified by Fakultas') {
+                    return response()->json(['success' => false, 'message' => 'Penelitian harus diverifikasi fakultas terlebih dahulu.'], 400);
+                }
 
-                return response()->json(['success' => true, 'message' => 'Penelitian diverifikasi fakultas. Menunggu persetujuan LPPM/Admin.']);
+                $penelitian->status = 'Approved';
+                
+                // Calculate points
+                $points = 0;
+                if ($penelitian->program === 'hibah luar negeri') {
+                    $points += 10;
+                } elseif ($penelitian->program === 'hibah dikti') {
+                    $points += 6; // External
+                } elseif ($penelitian->program === 'hibah internal') {
+                    $points += 3;
+                }
+
+                $penelitian->awarded_points = $points;
+                
+                $penelitian->save();
+
+                // Recalculate user points
+                $user = User::find($penelitian->user_id);
+                if ($user) {
+                    $user->recalculateKpiPoints();
+                }
+
+                \App\Models\DocumentHistory::create([
+                    'penelitian_id' => $penelitian->id,
+                    'user_id' => $request->admin_id ?? $penelitian->user_id,
+                    'action' => 'Disetujui Admin Penelitian',
+                    'notes' => null
+                ]);
             }
-
-            // Admin Approval Logic
-            if ($role !== 'admin penelitian' && $penelitian->status !== 'Verified by Fakultas') {
-                return response()->json(['success' => false, 'message' => 'Penelitian harus diverifikasi fakultas terlebih dahulu.'], 400);
-            }
-
-            $penelitian->status = 'Approved';
-            
-            // Calculate points
-            $points = 0;
-            if ($penelitian->program === 'hibah luar negeri') {
-                $points += 10;
-            } elseif ($penelitian->program === 'hibah dikti') {
-                $points += 6; // External
-            } elseif ($penelitian->program === 'hibah internal') {
-                $points += 3;
-            }
-
-            $penelitian->awarded_points = $points;
-            
-            $penelitian->save();
-
-            // Recalculate user points
-            $user = User::find($penelitian->user_id);
-            if ($user) {
-                $user->recalculateKpiPoints();
-            }
-
-            \App\Models\DocumentHistory::create([
-                'penelitian_id' => $penelitian->id,
-                'user_id' => $request->admin_id ?? $penelitian->user_id,
-                'action' => 'Disetujui Admin Penelitian',
-                'notes' => null
-            ]);
         } else {
             // Rejection
             $penelitian->status = 'Rejected';
@@ -304,7 +309,7 @@ class PenelitianController extends Controller
 
         return response()->json([
             'success' => true,
-            'message' => 'Penelitian berhasil ' . ($request->status === 'Approved' ? 'disetujui/diverifikasi' : 'ditolak') . '.',
+            'message' => 'Penelitian berhasil ' . ($request->status === 'Approved' ? ($role === 'admin fakultas' ? 'diverifikasi fakultas' : 'disetujui admin') : 'ditolak') . '.',
             'penelitian' => $penelitian,
         ]);
     }
