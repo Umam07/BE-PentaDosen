@@ -15,6 +15,7 @@ class SupportTicket extends Model
         'user_id',
         'subject',
         'message',
+        'image_url',
         'status',
         'admin_reply',
         'replied_by',

@@ -10,7 +10,7 @@ use App\Models\Notification;
 class SupportTicketController extends Controller
 {
     /**
-     * Dosen mengirim pesan/tiket bantuan baru.
+     * Dosen mengirim pesan/tiket bantuan baru (mendukung lampiran gambar maks 10MB).
      */
     public function store(Request $request)
     {
@@ -18,22 +18,32 @@ class SupportTicketController extends Controller
             'user_id' => 'required|exists:users,id',
             'subject' => 'nullable|string|max:255',
             'message' => 'required|string',
+            'image'   => 'nullable|file|image|mimes:jpeg,jpg,png,webp,gif|max:10240',
         ], [
             'user_id.required' => 'User ID pengirim wajib diisi.',
             'message.required' => 'Isi pesan tidak boleh kosong.',
+            'image.image'      => 'File terlampir harus berupa gambar.',
+            'image.max'        => 'Ukuran gambar tidak boleh melebihi 10 MB.',
         ]);
+
+        $imageUrl = null;
+        if ($request->hasFile('image')) {
+            $path = $request->file('image')->store('support_tickets', 'public');
+            $imageUrl = \Illuminate\Support\Facades\Storage::url($path);
+        }
 
         $ticket = SupportTicket::create([
             'user_id'     => $request->user_id,
             'subject'     => $request->subject,
             'message'     => $request->message,
+            'image_url'   => $imageUrl,
             'status'      => 'menunggu',
         ]);
 
         \App\Models\ActivityLog::log(
             $request->user_id,
             'Kirim Pesan Support',
-            'Dosen mengirim pesan bantuan ke admin: ' . ($request->subject ?: 'Tanpa Subjek')
+            'Dosen mengirim pesan bantuan ke admin: ' . ($request->subject ?: 'Tanpa Subjek') . ($imageUrl ? ' (dengan lampiran gambar)' : '')
         );
 
         return response()->json([
