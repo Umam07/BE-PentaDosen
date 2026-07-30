@@ -12,6 +12,7 @@ use App\Http\Controllers\PenelitianController;
 use App\Http\Controllers\ActivityLogController;
 use App\Http\Controllers\NotificationController;
 use App\Http\Controllers\CmsController;
+use App\Http\Controllers\SupportTicketController;
 
 // Auth Routes with strict rate limit
 Route::middleware(['throttle:auth'])->group(function () {
@@ -103,4 +104,14 @@ Route::middleware(['throttle:api'])->group(function () {
     // CMS User Roles & Access
     Route::get('/admin/cms/users', [CmsController::class, 'getUsers']);
     Route::post('/admin/cms/users/{id}/assign-role', [CmsController::class, 'assignRole']);
+
+    // Support Tickets (Pesan ke Admin & Pengelolaan CMS Admin)
+    Route::post('/support-tickets', [SupportTicketController::class, 'store']);
+    Route::get('/support-tickets', [SupportTicketController::class, 'index']);
+    Route::get('/support-tickets/{id}', [SupportTicketController::class, 'show']);
+
+    Route::get('/admin/support-tickets', [SupportTicketController::class, 'adminIndex']);
+    Route::get('/admin/support-tickets/{id}', [SupportTicketController::class, 'adminShow']);
+    Route::post('/admin/support-tickets/{id}/reply', [SupportTicketController::class, 'reply']);
+    Route::patch('/admin/support-tickets/{id}/status', [SupportTicketController::class, 'updateStatus']);
 });
