@@ -243,13 +243,27 @@ class UserController extends Controller
             ->groupBy('program_studi')
             ->get();
 
-        // Add research count for each prodi
+        // Add counts for each prodi
         $data = $data->map(function ($item) {
             $researchCount = \App\Models\Penelitian::whereHas('user', function ($query) use ($item) {
                 $query->where('program_studi', $item->program_studi);
             })->count();
 
+            $scopusCount = \App\Models\ScopusPublication::whereHas('user', function ($query) use ($item) {
+                $query->where('program_studi', $item->program_studi);
+            })->count();
+
+            $scholarCount = \App\Models\ScholarPublication::whereHas('user', function ($query) use ($item) {
+                $query->where('program_studi', $item->program_studi);
+            })->count();
+
+            $allDocCount = \App\Models\Document::whereHas('user', function ($query) use ($item) {
+                $query->where('program_studi', $item->program_studi);
+            })->count();
+
             $item->research_count = $researchCount;
+            $item->publication_count = $scopusCount + $scholarCount;
+            $item->document_count = $researchCount + $scopusCount + $scholarCount + $allDocCount;
             return $item;
         });
 
@@ -264,13 +278,27 @@ class UserController extends Controller
             ->groupBy('fakultas')
             ->get();
 
-        // Add research count for each fakultas
+        // Add counts for each fakultas
         $data = $data->map(function ($item) {
             $researchCount = \App\Models\Penelitian::whereHas('user', function ($query) use ($item) {
                 $query->where('fakultas', $item->fakultas);
             })->count();
 
+            $scopusCount = \App\Models\ScopusPublication::whereHas('user', function ($query) use ($item) {
+                $query->where('fakultas', $item->fakultas);
+            })->count();
+
+            $scholarCount = \App\Models\ScholarPublication::whereHas('user', function ($query) use ($item) {
+                $query->where('fakultas', $item->fakultas);
+            })->count();
+
+            $allDocCount = \App\Models\Document::whereHas('user', function ($query) use ($item) {
+                $query->where('fakultas', $item->fakultas);
+            })->count();
+
             $item->research_count = $researchCount;
+            $item->publication_count = $scopusCount + $scholarCount;
+            $item->document_count = $researchCount + $scopusCount + $scholarCount + $allDocCount;
             return $item;
         });
 
