@@ -172,6 +172,9 @@ class UserController extends Controller
         if ($user->scholar_id) {
             $scholarData = ScholarData::where('user_id', $user->id)->first();
             $publications = ScholarPublication::where('user_id', $user->id)->orderBy('year', 'desc')->get();
+            if ($scholarData) {
+                $scholarData->document_count = count($publications);
+            }
         }
 
         // Only fetch Scopus data if user has a Scopus ID
