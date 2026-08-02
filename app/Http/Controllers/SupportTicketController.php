@@ -10,6 +10,45 @@ use App\Models\Notification;
 class SupportTicketController extends Controller
 {
     /**
+     * Helper privat untuk memastikan array messages terisi & kompatibel dengan data lama.
+     */
+    private function ensureMessagesArray(SupportTicket $ticket): SupportTicket
+    {
+        $messages = $ticket->messages;
+        if (!is_array($messages) || empty($messages)) {
+            $messages = [];
+            // Initial message from Dosen
+            $user = $ticket->user ?? User::find($ticket->user_id);
+            $messages[] = [
+                'id'          => 'msg_init_' . $ticket->id,
+                'sender'      => 'user',
+                'sender_id'   => (int) $ticket->user_id,
+                'sender_name' => $user->name ?? 'Dosen',
+                'sender_role' => $user->role ?? 'dosen',
+                'message'     => $ticket->message,
+                'image_url'   => $ticket->image_url,
+                'created_at'  => $ticket->created_at ? $ticket->created_at->toIso8601String() : now()->toIso8601String(),
+            ];
+
+            // Admin reply if existed
+            if ($ticket->admin_reply) {
+                $admin = $ticket->repliedByAdmin ?? User::find($ticket->replied_by);
+                $messages[] = [
+                    'id'          => 'msg_reply_' . $ticket->id,
+                    'sender'      => 'admin',
+                    'sender_id'   => $ticket->replied_by ? (int) $ticket->replied_by : 1,
+                    'sender_name' => $admin->name ?? 'Tim Admin',
+                    'sender_role' => $admin->role ?? 'super admin',
+                    'message'     => $ticket->admin_reply,
+                    'created_at'  => $ticket->replied_at ? $ticket->replied_at->toIso8601String() : ($ticket->updated_at ? $ticket->updated_at->toIso8601String() : now()->toIso8601String()),
+                ];
+            }
+        }
+        $ticket->setAttribute('messages', $messages);
+        return $ticket;
+    }
+
+    /**
      * Dosen mengirim pesan/tiket bantuan baru (mendukung lampiran gambar maks 10MB).
      */
     public function store(Request $request)
@@ -32,12 +71,25 @@ class SupportTicketController extends Controller
             $imageUrl = \Illuminate\Support\Facades\Storage::url($path);
         }
 
-        $ticket = SupportTicket::create([
-            'user_id'     => $request->user_id,
-            'subject'     => $request->subject,
+        $user = User::find($request->user_id);
+        $initialMsg = [
+            'id'          => 'msg_' . time() . '_1',
+            'sender'      => 'user',
+            'sender_id'   => (int) $request->user_id,
+            'sender_name' => $user->name ?? 'Dosen',
+            'sender_role' => $user->role ?? 'dosen',
             'message'     => $request->message,
             'image_url'   => $imageUrl,
-            'status'      => 'menunggu',
+            'created_at'  => now()->toIso8601String(),
+        ];
+
+        $ticket = SupportTicket::create([
+            'user_id'   => $request->user_id,
+            'subject'   => $request->subject,
+            'message'   => $request->message,
+            'image_url' => $imageUrl,
+            'messages'  => [$initialMsg],
+            'status'    => 'menunggu',
         ]);
 
         \App\Models\ActivityLog::log(
@@ -72,6 +124,10 @@ class SupportTicketController extends Controller
             ->orderBy('created_at', 'desc')
             ->get();
 
+        $tickets->transform(function ($t) {
+            return $this->ensureMessagesArray($t);
+        });
+
         return response()->json([
             'success' => true,
             'tickets' => $tickets,
@@ -102,6 +158,8 @@ class SupportTicketController extends Controller
                 'message' => 'Anda tidak memiliki akses ke pesan ini.',
             ], 403);
         }
+
+        $this->ensureMessagesArray($ticket);
 
         return response()->json([
             'success' => true,
@@ -155,8 +213,14 @@ class SupportTicketController extends Controller
         $perPage = $request->query('per_page');
         if ($perPage) {
             $tickets = $query->paginate((int) $perPage);
+            $tickets->getCollection()->transform(function ($t) {
+                return $this->ensureMessagesArray($t);
+            });
         } else {
             $tickets = $query->get();
+            $tickets->transform(function ($t) {
+                return $this->ensureMessagesArray($t);
+            });
         }
 
         return response()->json([
@@ -194,8 +258,91 @@ class SupportTicketController extends Controller
             ], 404);
         }
 
+        $this->ensureMessagesArray($ticket);
+
         return response()->json([
             'success' => true,
+            'ticket'  => $ticket,
+        ]);
+    }
+
+    /**
+     * Kirim pesan susulan / balasan lanjutan (bisa dipanggil oleh Dosen maupun Admin).
+     */
+    public function addMessage(Request $request, $id)
+    {
+        $request->validate([
+            'sender_id' => 'required|exists:users,id',
+            'sender'    => 'required|in:user,admin',
+            'message'   => 'required|string',
+            'image'     => 'nullable|file|image|mimes:jpeg,jpg,png,webp,gif|max:10240',
+        ], [
+            'sender_id.required' => 'ID pengirim wajib diisi.',
+            'message.required'   => 'Pesan balasan tidak boleh kosong.',
+            'image.image'        => 'File terlampir harus berupa gambar.',
+        ]);
+
+        $ticket = SupportTicket::findOrFail($id);
+        $this->ensureMessagesArray($ticket);
+        $messages = $ticket->messages ?: [];
+
+        $imageUrl = null;
+        if ($request->hasFile('image')) {
+            $path = $request->file('image')->store('support_tickets', 'public');
+            $imageUrl = \Illuminate\Support\Facades\Storage::url($path);
+        }
+
+        $senderUser = User::find($request->sender_id);
+        $senderRole = $request->sender === 'admin' ? ($senderUser->role ?? 'super admin') : 'dosen';
+
+        $newMessage = [
+            'id'          => 'msg_' . time() . '_' . (count($messages) + 1),
+            'sender'      => $request->sender,
+            'sender_id'   => (int) $request->sender_id,
+            'sender_name' => $senderUser->name ?? ($request->sender === 'admin' ? 'Tim Admin' : 'Dosen'),
+            'sender_role' => $senderRole,
+            'message'     => trim($request->message),
+            'image_url'   => $imageUrl,
+            'created_at'  => now()->toIso8601String(),
+        ];
+
+        $messages[] = $newMessage;
+        $newStatus = $request->sender === 'admin' ? ($request->status ?: 'dibalas') : 'menunggu';
+
+        $updateData = [
+            'messages' => $messages,
+            'status'   => $newStatus,
+        ];
+
+        if ($request->sender === 'admin') {
+            $updateData['admin_reply'] = trim($request->message);
+            $updateData['replied_by']  = $request->sender_id;
+            $updateData['replied_at']  = now();
+
+            // Notifikasi ke Dosen
+            Notification::send(
+                $ticket->user_id,
+                'support_ticket_replied',
+                'Balasan Pesan Support',
+                'Admin membalas pesan Anda: ' . ($ticket->subject ?: 'Pesan Support'),
+                ['ticket_id' => $ticket->id]
+            );
+        } else {
+            // Notifikasi ke Admin / log activity untuk balasan Dosen
+            \App\Models\ActivityLog::log(
+                $request->sender_id,
+                'Kirim Balasan Support',
+                'Dosen mengirim pesan susulan pada tiket #' . $ticket->id
+            );
+        }
+
+        $ticket->update($updateData);
+        $ticket->load(['user:id,name,email,fakultas,program_studi', 'repliedByAdmin:id,name,role']);
+        $this->ensureMessagesArray($ticket);
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Pesan berhasil ditambahkan ke percakapan.',
             'ticket'  => $ticket,
         ]);
     }
@@ -205,48 +352,13 @@ class SupportTicketController extends Controller
      */
     public function reply(Request $request, $id)
     {
-        $request->validate([
-            'admin_id'    => 'required|exists:users,id',
-            'admin_reply' => 'required|string',
-            'status'      => 'nullable|in:dibalas,selesai',
-        ], [
-            'admin_id.required'    => 'ID admin wajib diisi.',
-            'admin_reply.required' => 'Isi balasan tidak boleh kosong.',
+        $request->merge([
+            'sender'    => 'admin',
+            'sender_id' => $request->admin_id,
+            'message'   => $request->admin_reply,
         ]);
 
-        $ticket = SupportTicket::findOrFail($id);
-
-        $newStatus = $request->status ?: 'dibalas';
-
-        $ticket->update([
-            'admin_reply' => $request->admin_reply,
-            'replied_by'  => $request->admin_id,
-            'replied_at'  => now(),
-            'status'      => $newStatus,
-        ]);
-
-        // Kirim Notifikasi ke Dosen pengirim tiket (Poin 4)
-        Notification::send(
-            $ticket->user_id,
-            'support_ticket_replied',
-            'Balasan Pesan Support',
-            'Admin membalas pesan Anda: ' . ($ticket->subject ?: 'Pesan Support'),
-            ['ticket_id' => $ticket->id]
-        );
-
-        \App\Models\ActivityLog::log(
-            $request->admin_id,
-            'Balas Pesan Support',
-            'Admin membalas pesan support dari Dosen ID ' . $ticket->user_id
-        );
-
-        $ticket->load(['user:id,name,email,fakultas,program_studi', 'repliedByAdmin:id,name,role']);
-
-        return response()->json([
-            'success' => true,
-            'message' => 'Balasan berhasil dikirim ke dosen.',
-            'ticket'  => $ticket,
-        ]);
+        return $this->addMessage($request, $id);
     }
 
     /**
@@ -274,6 +386,7 @@ class SupportTicketController extends Controller
         }
 
         $ticket->load(['user:id,name,email,fakultas,program_studi', 'repliedByAdmin:id,name,role']);
+        $this->ensureMessagesArray($ticket);
 
         return response()->json([
             'success' => true,

@@ -109,6 +109,7 @@ Route::middleware(['throttle:api'])->group(function () {
     Route::post('/support-tickets', [SupportTicketController::class, 'store']);
     Route::get('/support-tickets', [SupportTicketController::class, 'index']);
     Route::get('/support-tickets/{id}', [SupportTicketController::class, 'show']);
+    Route::post('/support-tickets/{id}/messages', [SupportTicketController::class, 'addMessage']);
 
     Route::get('/admin/support-tickets', [SupportTicketController::class, 'adminIndex']);
     Route::get('/admin/support-tickets/{id}', [SupportTicketController::class, 'adminShow']);

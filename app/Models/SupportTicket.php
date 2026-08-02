@@ -16,6 +16,7 @@ class SupportTicket extends Model
         'subject',
         'message',
         'image_url',
+        'messages',
         'status',
         'admin_reply',
         'replied_by',
@@ -23,6 +24,7 @@ class SupportTicket extends Model
     ];
 
     protected $casts = [
+        'messages'   => 'array',
         'replied_at' => 'datetime',
     ];
 
