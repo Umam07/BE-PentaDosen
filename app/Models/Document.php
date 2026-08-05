@@ -28,6 +28,7 @@ class Document extends Model
         'inventor_name',
         'sinta_rank',
         'is_sinta_confirmed',
+        'citations',
     ];
 
     protected $casts = [
@@ -36,6 +37,7 @@ class Document extends Model
         'is_hyperauthor' => 'boolean',
         'is_corresponding' => 'boolean',
         'is_corresponding_confirmed' => 'boolean',
+        'citations' => 'integer',
     ];
 
     public function user()

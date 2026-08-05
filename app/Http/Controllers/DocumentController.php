@@ -43,6 +43,7 @@ class DocumentController extends Controller
             'file' => 'nullable|file|mimes:pdf,jpg,jpeg,png|max:10240',
             'is_corresponding' => 'nullable|boolean',
             'sinta_rank' => 'nullable|string',
+            'citations' => 'nullable|integer|min:0',
         ]);
 
         // Duplicate check
@@ -157,6 +158,7 @@ class DocumentController extends Controller
                     'inventor_name' => $request->inventor_name,
                     'sinta_rank' => $request->sinta_rank ?? $existingDoc->sinta_rank,
                     'is_sinta_confirmed' => $request->filled('sinta_rank') ? true : $existingDoc->is_sinta_confirmed,
+                    'citations' => $request->filled('citations') ? (int)$request->citations : $existingDoc->citations,
                 ]);
                 $doc = $existingDoc;
             } else {
@@ -175,6 +177,7 @@ class DocumentController extends Controller
                     'inventor_name' => $request->inventor_name,
                     'sinta_rank' => $request->sinta_rank,
                     'is_sinta_confirmed' => $request->filled('sinta_rank') ? true : false,
+                    'citations' => $request->filled('citations') ? (int)$request->citations : 0,
                 ]);
 
                 // If auto-verified, update user's total KPI points
@@ -521,6 +524,10 @@ class DocumentController extends Controller
         if ($request->has('sinta_rank')) {
             $doc->sinta_rank = $request->sinta_rank;
             $doc->is_sinta_confirmed = true;
+        }
+
+        if ($request->has('citations')) {
+            $doc->citations = (int)$request->citations;
         }
 
         if ($wasRejected) {

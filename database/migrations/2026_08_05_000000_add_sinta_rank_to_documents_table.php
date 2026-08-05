@@ -18,6 +18,9 @@ return new class extends Migration
             if (!Schema::hasColumn('documents', 'is_sinta_confirmed')) {
                 $table->boolean('is_sinta_confirmed')->default(false);
             }
+            if (!Schema::hasColumn('documents', 'citations')) {
+                $table->integer('citations')->default(0);
+            }
         });
     }
 
@@ -32,6 +35,9 @@ return new class extends Migration
             }
             if (Schema::hasColumn('documents', 'is_sinta_confirmed')) {
                 $table->dropColumn('is_sinta_confirmed');
+            }
+            if (Schema::hasColumn('documents', 'citations')) {
+                $table->dropColumn('citations');
             }
         });
     }
