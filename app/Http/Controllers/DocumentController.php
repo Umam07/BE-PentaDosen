@@ -42,6 +42,7 @@ class DocumentController extends Controller
             'doc_type' => 'required|in:kpi,arsip',
             'file' => 'nullable|file|mimes:pdf,jpg,jpeg,png|max:10240',
             'is_corresponding' => 'nullable|boolean',
+            'sinta_rank' => 'nullable|string',
         ]);
 
         // Duplicate check
@@ -154,6 +155,8 @@ class DocumentController extends Controller
                     'is_corresponding' => $request->boolean('is_corresponding', $existingDoc->is_corresponding),
                     'hki_type' => $request->hki_type,
                     'inventor_name' => $request->inventor_name,
+                    'sinta_rank' => $request->sinta_rank ?? $existingDoc->sinta_rank,
+                    'is_sinta_confirmed' => $request->filled('sinta_rank') ? true : $existingDoc->is_sinta_confirmed,
                 ]);
                 $doc = $existingDoc;
             } else {
@@ -170,6 +173,8 @@ class DocumentController extends Controller
                     'is_corresponding' => $request->boolean('is_corresponding', false),
                     'hki_type' => $request->hki_type,
                     'inventor_name' => $request->inventor_name,
+                    'sinta_rank' => $request->sinta_rank,
+                    'is_sinta_confirmed' => $request->filled('sinta_rank') ? true : false,
                 ]);
 
                 // If auto-verified, update user's total KPI points
@@ -512,6 +517,11 @@ class DocumentController extends Controller
         $doc->is_corresponding    = $request->boolean('is_corresponding', $doc->is_corresponding);
         $doc->hki_type = $request->hki_type;
         $doc->inventor_name = $request->inventor_name;
+
+        if ($request->has('sinta_rank')) {
+            $doc->sinta_rank = $request->sinta_rank;
+            $doc->is_sinta_confirmed = true;
+        }
 
         if ($wasRejected) {
             $doc->status = 'Pending';

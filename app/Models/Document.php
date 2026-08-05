@@ -26,6 +26,8 @@ class Document extends Model
         'is_corresponding_confirmed',
         'hki_type',
         'inventor_name',
+        'sinta_rank',
+        'is_sinta_confirmed',
     ];
 
     protected $casts = [
