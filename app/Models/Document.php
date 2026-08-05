@@ -79,7 +79,13 @@ class Document extends Model
             ];
             $basePoints = $basePointsMap[$q] ?? 33.0;
         } else {
-            // Jurnal Nasional base weight based on SINTA rank
+            // Check if document has citations (> 0) for Google Scholar calculation
+            $citations = (int)($this->citations ?? 0);
+            if ($citations > 0) {
+                return (float)round(0.5 + 0.5 + min($citations, 500) * 0.25);
+            }
+
+            // Otherwise, Jurnal Nasional base weight based on SINTA rank
             $rank = strtoupper((string)($this->sinta_rank ?? ''));
             $sintaPointsMap = [
                 'S1' => 25.0,
