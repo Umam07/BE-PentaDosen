@@ -77,8 +77,18 @@ class Document extends Model
             ];
             $basePoints = $basePointsMap[$q] ?? 33.0;
         } else {
-            // Jurnal Nasional base weight is 20
-            $basePoints = 20.0;
+            // Jurnal Nasional base weight based on SINTA rank
+            $rank = strtoupper((string)($this->sinta_rank ?? ''));
+            $sintaPointsMap = [
+                'S1' => 25.0,
+                'S2' => 25.0,
+                'S3' => 20.0,
+                'S4' => 20.0,
+                'S5' => 15.0,
+                'S6' => 15.0,
+                'NON-SINTA' => 10.0,
+            ];
+            $basePoints = $sintaPointsMap[$rank] ?? 10.0;
         }
 
         if ($this->author_role === 'Single Author' || ($totalAuthors === 1)) {
