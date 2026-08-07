@@ -361,6 +361,11 @@ class UserController extends Controller
             $totalScholar = \App\Models\ScholarPublication::count();
             $totalScopus = \App\Models\ScopusPublication::count();
             $totalResearch = \App\Models\Penelitian::count();
+            $approvedResearch = \App\Models\Penelitian::where('status', 'Approved')->count();
+
+            $totalValidated = $approvedDocs + $approvedResearch + $totalScholar + $totalScopus;
+            $totalAll = $totalDocs + $totalResearch + $totalScholar + $totalScopus;
+            $dataAccuracy = $totalAll > 0 ? round(($totalValidated / $totalAll) * 100, 1) : 100.0;
 
             return [
                 'total_users' => $totalUsers,
@@ -377,6 +382,7 @@ class UserController extends Controller
                 'total_scholar' => $totalScholar,
                 'total_scopus' => $totalScopus,
                 'total_research' => $totalResearch,
+                'data_accuracy' => $dataAccuracy,
             ];
         };
 
