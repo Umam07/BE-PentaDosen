@@ -336,7 +336,7 @@ class CmsController extends Controller
         $user = User::findOrFail($id);
 
         $request->validate([
-            'role' => 'required|string|in:dosen,staf,admin penelitian,admin fakultas,super admin,reviewer',
+            'role' => 'required|string|in:dosen,staf,admin penelitian,admin fakultas,reviewer',
             'fakultas' => 'nullable|string',
             'program_studi' => 'nullable|string',
         ]);

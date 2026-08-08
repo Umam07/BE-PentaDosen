@@ -38,7 +38,7 @@ class SupportTicketController extends Controller
                     'sender'      => 'admin',
                     'sender_id'   => $ticket->replied_by ? (int) $ticket->replied_by : 1,
                     'sender_name' => $admin->name ?? 'Tim Admin',
-                    'sender_role' => $admin->role ?? 'super admin',
+                    'sender_role' => $admin->role ?? 'admin penelitian',
                     'message'     => $ticket->admin_reply,
                     'created_at'  => $ticket->replied_at ? $ticket->replied_at->toIso8601String() : ($ticket->updated_at ? $ticket->updated_at->toIso8601String() : now()->toIso8601String()),
                 ];
@@ -152,7 +152,7 @@ class SupportTicketController extends Controller
         $requestUserId = $request->query('user_id');
         $userRole = $request->query('role');
 
-        if ($requestUserId && $ticket->user_id != $requestUserId && !in_array($userRole, ['super admin', 'admin penelitian', 'admin fakultas'])) {
+        if ($requestUserId && $ticket->user_id != $requestUserId && !in_array($userRole, ['admin penelitian', 'admin fakultas'])) {
             return response()->json([
                 'success' => false,
                 'message' => 'Anda tidak memiliki akses ke pesan ini.',
@@ -173,7 +173,7 @@ class SupportTicketController extends Controller
     public function adminIndex(Request $request)
     {
         $role = $request->query('role');
-        if ($role && !in_array($role, ['super admin', 'admin penelitian', 'admin fakultas'])) {
+        if ($role && !in_array($role, ['admin penelitian', 'admin fakultas'])) {
             return response()->json(['success' => false, 'message' => 'Akses ditolak: khusus admin.'], 403);
         }
 
@@ -242,7 +242,7 @@ class SupportTicketController extends Controller
     public function adminShow(Request $request, $id)
     {
         $role = $request->query('role');
-        if ($role && !in_array($role, ['super admin', 'admin penelitian', 'admin fakultas'])) {
+        if ($role && !in_array($role, ['admin penelitian', 'admin fakultas'])) {
             return response()->json(['success' => false, 'message' => 'Akses ditolak: khusus admin.'], 403);
         }
 
@@ -293,7 +293,7 @@ class SupportTicketController extends Controller
         }
 
         $senderUser = User::find($request->sender_id);
-        $senderRole = $request->sender === 'admin' ? ($senderUser->role ?? 'super admin') : 'dosen';
+        $senderRole = $request->sender === 'admin' ? ($senderUser->role ?? 'admin penelitian') : 'dosen';
 
         $newMessage = [
             'id'          => 'msg_' . time() . '_' . (count($messages) + 1),

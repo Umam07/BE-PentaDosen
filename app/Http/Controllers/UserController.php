@@ -112,8 +112,8 @@ class UserController extends Controller
                                 $user->nidn = $idNik ?: $user->nidn;
                                 $user->phone = $phone ?: $user->phone;
 
-                                // Prevent LDAP from overwriting admin/super admin/reviewer roles
-                                if (!$user->exists || !in_array($user->role, ['super admin', 'admin penelitian', 'admin fakultas', 'reviewer'])) {
+                                // Prevent LDAP from overwriting admin/reviewer roles
+                                if (!$user->exists || !in_array($user->role, ['admin penelitian', 'admin fakultas', 'reviewer'])) {
                                     $user->role = $role;
                                 }
 

@@ -76,10 +76,10 @@ class DatabaseSeeder extends Seeder
             );
         }
 
-        // Super Admin Account (Maintained as required)
+        // Main Admin Account (Admin Penelitian)
         User::updateOrCreate(
             ['email' => 'superadmin@univ.edu'],
-            ['name' => 'Super Admin', 'role' => 'super admin', 'password' => bcrypt('P3nt4D0s3nSuper@2026!')]
+            ['name' => 'Admin Penelitian (Master)', 'role' => 'admin penelitian', 'password' => bcrypt('P3nt4D0s3nSuper@2026!')]
         );
 
         // Lecturers (Dosen)
