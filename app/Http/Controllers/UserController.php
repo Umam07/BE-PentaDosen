@@ -340,49 +340,62 @@ class UserController extends Controller
                 ->orderBy('total_kpi_points', 'desc')
                 ->first(['name', 'total_kpi_points']);
 
-            // KPI Score 3 Years (Current year and 2 previous years)
+            // KPI Score Overall — semua periode, tanpa filter tahun
+            $kpiOverallDocs   = \App\Models\Document::where('status', 'Approved')->sum('awarded_points');
+            $kpiOverallScopus = \App\Models\ScopusPublication::sum('awarded_points');
+            $kpiOverall       = $kpiOverallDocs + $kpiOverallScopus;
+
+            // Gunakan nilai terbesar antara sum awarded_points vs sum total_kpi_points user
+            // untuk menghindari data lama yang belum tersinkron
+            $totalPoints = max((int) $totalPoints, (int) $kpiOverall);
+
+            // KPI Score 3 Years (tahun ini + 2 tahun sebelumnya)
             $currentYear = now()->year;
             $threeYearsAgo = $currentYear - 2;
-             $kpiScore3YearsDocs = \App\Models\Document::where('status', 'Approved')
+            $kpiScore3YearsDocs   = \App\Models\Document::where('status', 'Approved')
                 ->whereYear('published_at', '>=', $threeYearsAgo)
                 ->sum('awarded_points');
-             $kpiScore3YearsScopus = \App\Models\ScopusPublication::where('year', '>=', $threeYearsAgo)
+            $kpiScore3YearsScopus = \App\Models\ScopusPublication::where('year', '>=', $threeYearsAgo)
                 ->sum('awarded_points');
-             $kpiScore3Years = $kpiScore3YearsDocs + $kpiScore3YearsScopus;
+            $kpiScore3Years = $kpiScore3YearsDocs + $kpiScore3YearsScopus;
 
-             // KPI Score This Year
-             $kpiScoreThisYearDocs = \App\Models\Document::where('status', 'Approved')
+            // KPI Score This Year
+            $kpiScoreThisYearDocs   = \App\Models\Document::where('status', 'Approved')
                 ->whereYear('published_at', $currentYear)
                 ->sum('awarded_points');
-             $kpiScoreThisYearScopus = \App\Models\ScopusPublication::where('year', $currentYear)
+            $kpiScoreThisYearScopus = \App\Models\ScopusPublication::where('year', $currentYear)
                 ->sum('awarded_points');
-             $kpiScoreThisYear = $kpiScoreThisYearDocs + $kpiScoreThisYearScopus;
+            $kpiScoreThisYear = $kpiScoreThisYearDocs + $kpiScoreThisYearScopus;
+
+            // Pastikan hirarki logis: Overall >= 3-Tahun >= Tahun Ini
+            $kpiScore3Years = max($kpiScore3Years, $kpiScoreThisYear);
+            $totalPoints    = max($totalPoints, $kpiScore3Years);
 
             $totalScholar = \App\Models\ScholarPublication::count();
-            $totalScopus = \App\Models\ScopusPublication::count();
+            $totalScopus  = \App\Models\ScopusPublication::count();
             $totalResearch = \App\Models\Penelitian::count();
             $approvedResearch = \App\Models\Penelitian::where('status', 'Approved')->count();
 
             $totalValidated = $approvedDocs + $approvedResearch + $totalScholar + $totalScopus;
-            $totalAll = $totalDocs + $totalResearch + $totalScholar + $totalScopus;
-            $dataAccuracy = $totalAll > 0 ? round(($totalValidated / $totalAll) * 100, 1) : 100.0;
+            $totalAll       = $totalDocs + $totalResearch + $totalScholar + $totalScopus;
+            $dataAccuracy   = $totalAll > 0 ? round(($totalValidated / $totalAll) * 100, 1) : 100.0;
 
             return [
-                'total_users' => $totalUsers,
-                'total_dosen' => $totalDosen,
-                'total_prodi' => $totalProdi,
-                'total_points' => $totalPoints,
-                'total_docs' => $totalDocs,
-                'approved_docs' => $approvedDocs,
-                'total_citations' => $totalCitations,
-                'top_prodi' => $topProdi,
-                'top_performer' => $topPerformer,
-                'kpi_score_3_years' => $kpiScore3Years,
-                'kpi_score_this_year' => $kpiScoreThisYear,
-                'total_scholar' => $totalScholar,
-                'total_scopus' => $totalScopus,
-                'total_research' => $totalResearch,
-                'data_accuracy' => $dataAccuracy,
+                'total_users'          => $totalUsers,
+                'total_dosen'          => $totalDosen,
+                'total_prodi'          => $totalProdi,
+                'total_points'         => $totalPoints,
+                'total_docs'           => $totalDocs,
+                'approved_docs'        => $approvedDocs,
+                'total_citations'      => $totalCitations,
+                'top_prodi'            => $topProdi,
+                'top_performer'        => $topPerformer,
+                'kpi_score_3_years'    => $kpiScore3Years,
+                'kpi_score_this_year'  => $kpiScoreThisYear,
+                'total_scholar'        => $totalScholar,
+                'total_scopus'         => $totalScopus,
+                'total_research'       => $totalResearch,
+                'data_accuracy'        => $dataAccuracy,
             ];
         };
 
