@@ -82,23 +82,37 @@ class DatabaseSeeder extends Seeder
             ['name' => 'Admin Penelitian (Master)', 'role' => 'admin penelitian', 'password' => bcrypt('P3nt4D0s3nSuper@2026!')]
         );
 
-        // Lecturers (Dosen)
-        User::updateOrCreate(
-            ['email' => 'dosen1@univ.edu'],
-            ['name' => 'Chandra Prasetyo Utomo, S.Kom, M.Kom.', 'role' => 'dosen', 'scholar_id' => '86JsILAAAAAJ', 'scopus_id' => '36656758200', 'fakultas' => 'Fakultas Teknologi Informasi', 'program_studi' => 'Teknik Informatika', 'password' => bcrypt('password'), 'total_kpi_points' => 0]
-        );
-        User::updateOrCreate(
-            ['email' => 'nurul.huda@univ.edu'],
-            ['name' => 'Nurul Huda', 'role' => 'dosen', 'scholar_id' => 'oOuMqCMAAAAJ&hl', 'scopus_id' => '57198094150', 'fakultas' => 'Fakultas Ekonomi dan Bisnis', 'program_studi' => 'Manajemen', 'password' => bcrypt('password'), 'total_kpi_points' => 0]
-        );
-        User::updateOrCreate(
-            ['email' => 'kholis.ernawati@univ.edu'],
-            ['name' => 'Kholis Ernawati', 'role' => 'dosen', 'scholar_id' => 'kvM1yXcAAAAJ&hl', 'scopus_id' => '57210110753', 'fakultas' => 'Fakultas Kedokteran', 'program_studi' => 'Kedokteran', 'password' => bcrypt('password'), 'total_kpi_points' => 0]
-        );
-        User::updateOrCreate(
-            ['email' => 'endang.purwaningsih@univ.edu'],
-            ['name' => 'Endang Purwaningsih', 'role' => 'dosen', 'scholar_id' => 'ghULz5YAAAAJ', 'scopus_id' => '57205016667', 'fakultas' => 'Fakultas Hukum', 'program_studi' => 'Hukum', 'password' => bcrypt('password'), 'total_kpi_points' => 0]
-        );
+        // 10 Dummy Lecturers (Dosen) - initialized with Name, Email, Password, and Role only.
+        // Other attributes (scholar_id, scopus_id, fakultas, program_studi) will be populated automatically via SINTA Scraper API.
+        $dummyDosen = [
+            ['name' => 'Chandra Prasetyo Utomo', 'email' => 'chandra.prasetyo@univ.edu'],
+            ['name' => 'Nurul Huda', 'email' => 'nurul.huda@univ.edu'],
+            ['name' => 'Kholis Ernawati', 'email' => 'kholis.ernawati@univ.edu'],
+            ['name' => 'Endang Purwaningsih', 'email' => 'endang.purwaningsih@univ.edu'],
+            ['name' => 'nurmaya', 'email' => 'nurmaya@univ.edu'],
+            ['name' => 'muhammad fathurrachman', 'email' => 'fathurrachman@univ.edu'],
+            ['name' => 'Paramaresthi Windriyani', 'email' => 'paramaresthi.windriyani@univ.edu'],
+            ['name' => 'Herika Hayurani', 'email' => 'herika.hayurani@univ.edu'],
+            ['name' => 'sari zakiah akmal', 'email' => 'sari.zakiah@univ.edu'],
+            ['name' => 'wening sari', 'email' => 'wening.sari@univ.edu'],
+        ];
+
+        foreach ($dummyDosen as $dosenData) {
+            User::updateOrCreate(
+                ['email' => $dosenData['email']],
+                [
+                    'name' => $dosenData['name'],
+                    'role' => 'dosen',
+                    'scholar_id' => null,
+                    'scopus_id' => null,
+                    'fakultas' => null,
+                    'program_studi' => null,
+                    'avatar' => null,
+                    'password' => bcrypt('password'),
+                    'total_kpi_points' => 0
+                ]
+            );
+        }
 
         // Administration & Leadership
         User::updateOrCreate(

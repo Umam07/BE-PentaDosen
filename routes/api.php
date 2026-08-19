@@ -13,6 +13,7 @@ use App\Http\Controllers\ActivityLogController;
 use App\Http\Controllers\NotificationController;
 use App\Http\Controllers\CmsController;
 use App\Http\Controllers\SupportTicketController;
+use App\Http\Controllers\SintaController;
 
 // Auth Routes with strict rate limit
 Route::middleware(['throttle:auth'])->group(function () {
@@ -26,6 +27,12 @@ Route::middleware(['throttle:api'])->group(function () {
     Route::post('/users/{id}/scholar', [ScholarController::class, 'updateScholarId']);
     Route::post('/users/{id}/sync', [ScholarController::class, 'sync'])->middleware('throttle:60,1');
     Route::get('/scholar/check/{scholar_id}', [ScholarController::class, 'checkId']);
+    
+    // SINTA Sync Routes
+    Route::post('/users/{id}/sync-sinta', [SintaController::class, 'syncUser']);
+    Route::post('/admin/sinta/sync-all', [SintaController::class, 'syncAll']);
+    Route::get('/sinta/check-name', [SintaController::class, 'checkName']);
+    Route::get('/sinta/dosen', [SintaController::class, 'getDosenList']);
     
     Route::post('/users/{id}/scopus', [ScopusController::class, 'updateScopusId']);
     Route::post('/users/{id}/sync-scopus', [ScopusController::class, 'sync'])->middleware('throttle:60,1');
