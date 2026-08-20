@@ -292,6 +292,7 @@ class DocumentController extends Controller
                     $arr['source'] = 'scopus';
                     $arr['source_id'] = $sp->id;
                     $arr['category'] = 'Jurnal Internasional';
+                    $arr['citations'] = (int)($sp->citations ?? 0);
                     $arr['quartile'] = $sp->quartile;
                     $arr['author_role'] = $sp->author_role;
                     $arr['author_order'] = $sp->author_order;
@@ -320,6 +321,7 @@ class DocumentController extends Controller
                     'title' => $pub->title,
                     'category' => 'Jurnal Internasional',
                     'published_at' => $pub->year ? ($pub->year . '-01-01') : null,
+                    'citations' => (int)($pub->citations ?? 0),
                     'quartile' => $pub->quartile,
                     'author_role' => $pub->author_role,
                     'author_order' => $pub->author_order,
