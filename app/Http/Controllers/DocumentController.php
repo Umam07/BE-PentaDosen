@@ -430,11 +430,11 @@ class DocumentController extends Controller
     public function linkToPenelitian(Request $request, $id)
     {
         $request->validate([
-            'penelitian_id' => 'required|exists:penelitian,id'
+            'penelitian_id' => 'nullable|exists:penelitian,id'
         ]);
 
         $doc = Document::findOrFail($id);
-        $doc->penelitian_id = $request->penelitian_id;
+        $doc->penelitian_id = $request->filled('penelitian_id') ? $request->penelitian_id : null;
         $doc->save();
 
         // Clear cache
@@ -447,7 +447,7 @@ class DocumentController extends Controller
 
         return response()->json([
             'success' => true,
-            'message' => 'Dokumen berhasil dihubungkan ke penelitian.',
+            'message' => $doc->penelitian_id ? 'Dokumen berhasil dihubungkan ke penelitian.' : 'Tautan penelitian berhasil dilepas.',
             'document' => $doc->load('penelitian')
         ]);
     }
@@ -455,8 +455,8 @@ class DocumentController extends Controller
     public function getApprovedPenelitian($userId)
     {
         $penelitian = \App\Models\Penelitian::where('user_id', $userId)
-            ->where('status', 'Approved')
             ->orderBy('tahun', 'desc')
+            ->orderBy('created_at', 'desc')
             ->get();
 
         return response()->json([
