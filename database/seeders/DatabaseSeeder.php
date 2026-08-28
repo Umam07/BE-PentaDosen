@@ -98,20 +98,16 @@ class DatabaseSeeder extends Seeder
         ];
 
         foreach ($dummyDosen as $dosenData) {
-            User::updateOrCreate(
-                ['email' => $dosenData['email']],
-                [
+            $existing = User::where('email', $dosenData['email'])->first();
+            if (!$existing) {
+                User::create([
                     'name' => $dosenData['name'],
+                    'email' => $dosenData['email'],
                     'role' => 'dosen',
-                    'scholar_id' => null,
-                    'scopus_id' => null,
-                    'fakultas' => null,
-                    'program_studi' => null,
-                    'avatar' => null,
                     'password' => bcrypt('password'),
                     'total_kpi_points' => 0
-                ]
-            );
+                ]);
+            }
         }
 
         // Administration & Leadership
@@ -121,19 +117,19 @@ class DatabaseSeeder extends Seeder
         );
         User::updateOrCreate(
             ['email' => 'fakultas@univ.edu'],
-            ['name' => 'Admin Fakultas Teknologi Informasi', 'role' => 'admin fakultas', 'fakultas' => 'Fakultas Teknologi Informasi', 'program_studi' => 'Teknik Informatika', 'password' => bcrypt('password')]
+            ['name' => 'Admin Fakultas Teknologi Informasi', 'role' => 'admin fakultas', 'fakultas' => 'Fakultas Teknologi Informasi', 'program_studi' => 'Teknik Informatika (S1)', 'password' => bcrypt('password')]
         );
         User::updateOrCreate(
             ['email' => 'fakultas.feb@univ.edu'],
-            ['name' => 'Admin Fakultas Ekonomi dan Bisnis', 'role' => 'admin fakultas', 'fakultas' => 'Fakultas Ekonomi dan Bisnis', 'program_studi' => 'Manajemen', 'password' => bcrypt('password')]
+            ['name' => 'Admin Fakultas Ekonomi dan Bisnis', 'role' => 'admin fakultas', 'fakultas' => 'Fakultas Ekonomi dan Bisnis', 'program_studi' => 'Manajemen (S1)', 'password' => bcrypt('password')]
         );
         User::updateOrCreate(
             ['email' => 'fakultas.fk@univ.edu'],
-            ['name' => 'Admin Fakultas Kedokteran', 'role' => 'admin fakultas', 'fakultas' => 'Fakultas Kedokteran', 'program_studi' => 'Kedokteran', 'password' => bcrypt('password')]
+            ['name' => 'Admin Fakultas Kedokteran', 'role' => 'admin fakultas', 'fakultas' => 'Fakultas Kedokteran', 'program_studi' => 'Kedokteran (S1)', 'password' => bcrypt('password')]
         );
         User::updateOrCreate(
             ['email' => 'fakultas.fh@univ.edu'],
-            ['name' => 'Admin Fakultas Hukum', 'role' => 'admin fakultas', 'fakultas' => 'Fakultas Hukum', 'program_studi' => 'Hukum', 'password' => bcrypt('password')]
+            ['name' => 'Admin Fakultas Hukum', 'role' => 'admin fakultas', 'fakultas' => 'Fakultas Hukum', 'program_studi' => 'Ilmu Hukum (S1)', 'password' => bcrypt('password')]
         );
 
         // Seeding default system settings

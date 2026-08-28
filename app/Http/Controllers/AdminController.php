@@ -30,7 +30,13 @@ class AdminController extends Controller
                 $query->whereHas('user', function ($q) use ($admin) {
                     $q->where('fakultas', $admin->fakultas);
                     if ($admin->program_studi) {
-                        $q->where('program_studi', $admin->program_studi);
+                        $cleanProdi = trim(preg_replace('/\s*\(.*?\)\s*/', '', $admin->program_studi));
+                        $q->where(function ($sub) use ($admin, $cleanProdi) {
+                            $sub->where('program_studi', $admin->program_studi)
+                                ->orWhere('program_studi', 'LIKE', '%' . $cleanProdi . '%')
+                                ->orWhereNull('program_studi')
+                                ->orWhere('program_studi', '');
+                        });
                     }
                 });
             }
@@ -40,14 +46,45 @@ class AdminController extends Controller
             $query->where('status', 'Pending');
         }
 
-        $docs = $query->orderBy('created_at', 'asc')
-            ->get()
-            ->map(function ($doc) {
-                return array_merge($doc->toArray(), [
-                    'user_name' => $doc->user ? $doc->user->name : '',
-                    'fakultas' => $doc->user ? $doc->user->fakultas : '',
-                ]);
-            });
+        $rawDocs = $query->orderBy('created_at', 'asc')->get();
+
+        $grouped = [];
+        foreach ($rawDocs as $doc) {
+            $key = strtolower(trim($doc->title)) . '|' . ($doc->file_url ?: $doc->category);
+            if (!isset($grouped[$key])) {
+                $grouped[$key] = $doc;
+            }
+        }
+
+        $docs = collect($grouped)->map(function ($doc) {
+            // Find all sibling co-authors across the entire university linked to this paper
+            $siblings = Document::with('user')
+                ->where('title', $doc->title)
+                ->where('file_url', $doc->file_url)
+                ->where('id', '!=', $doc->id)
+                ->get()
+                ->map(function ($s) {
+                    return [
+                        'id' => $s->id,
+                        'user_id' => $s->user_id,
+                        'user_name' => $s->user ? $s->user->name : '',
+                        'fakultas' => $s->user ? $s->user->fakultas : '',
+                        'program_studi' => $s->user ? $s->user->program_studi : '',
+                        'author_role' => $s->author_role,
+                        'author_order' => $s->author_order,
+                    ];
+                })
+                ->values()
+                ->toArray();
+
+            return array_merge($doc->toArray(), [
+                'user_name' => $doc->user ? $doc->user->name : '',
+                'fakultas' => $doc->user ? $doc->user->fakultas : '',
+                'program_studi' => $doc->user ? $doc->user->program_studi : '',
+                'co_authors_list' => $siblings,
+                'co_authors_count' => count($siblings)
+            ]);
+        })->values();
 
         return response()->json(['documents' => $docs]);
     }
@@ -75,7 +112,13 @@ class AdminController extends Controller
                 $query->whereHas('user', function ($q) use ($adminFakultas, $adminProdi) {
                     $q->where('fakultas', $adminFakultas);
                     if ($adminProdi) {
-                        $q->where('program_studi', $adminProdi);
+                        $cleanProdi = trim(preg_replace('/\s*\(.*?\)\s*/', '', $adminProdi));
+                        $q->where(function ($sub) use ($adminProdi, $cleanProdi) {
+                            $sub->where('program_studi', $adminProdi)
+                                ->orWhere('program_studi', 'LIKE', '%' . $cleanProdi . '%')
+                                ->orWhereNull('program_studi')
+                                ->orWhere('program_studi', '');
+                        });
                     }
                 });
             }
@@ -109,7 +152,13 @@ class AdminController extends Controller
                 $scopusQuery->whereHas('user', function ($q) use ($adminFakultas, $adminProdi) {
                     $q->where('fakultas', $adminFakultas);
                     if ($adminProdi) {
-                        $q->where('program_studi', $adminProdi);
+                        $cleanProdi = trim(preg_replace('/\s*\(.*?\)\s*/', '', $adminProdi));
+                        $q->where(function ($sub) use ($adminProdi, $cleanProdi) {
+                            $sub->where('program_studi', $adminProdi)
+                                ->orWhere('program_studi', 'LIKE', '%' . $cleanProdi . '%')
+                                ->orWhereNull('program_studi')
+                                ->orWhere('program_studi', '');
+                        });
                     }
                 });
             }
@@ -156,7 +205,13 @@ class AdminController extends Controller
                 $scholarQuery->whereHas('user', function ($q) use ($adminFakultas, $adminProdi) {
                     $q->where('fakultas', $adminFakultas);
                     if ($adminProdi) {
-                        $q->where('program_studi', $adminProdi);
+                        $cleanProdi = trim(preg_replace('/\s*\(.*?\)\s*/', '', $adminProdi));
+                        $q->where(function ($sub) use ($adminProdi, $cleanProdi) {
+                            $sub->where('program_studi', $adminProdi)
+                                ->orWhere('program_studi', 'LIKE', '%' . $cleanProdi . '%')
+                                ->orWhereNull('program_studi')
+                                ->orWhere('program_studi', '');
+                        });
                     }
                 });
             }
@@ -231,7 +286,13 @@ class AdminController extends Controller
                 if ($admin && $admin->fakultas) {
                     $query->where('fakultas', $admin->fakultas);
                     if ($admin->program_studi) {
-                        $query->where('program_studi', $admin->program_studi);
+                        $cleanProdi = trim(preg_replace('/\s*\(.*?\)\s*/', '', $admin->program_studi));
+                        $query->where(function ($sub) use ($admin, $cleanProdi) {
+                            $sub->where('program_studi', $admin->program_studi)
+                                ->orWhere('program_studi', 'LIKE', '%' . $cleanProdi . '%')
+                                ->orWhereNull('program_studi')
+                                ->orWhere('program_studi', '');
+                        });
                     }
                 }
             }
@@ -496,15 +557,25 @@ class AdminController extends Controller
         $docTitle = $doc->title;
         $docOwnerUserId = $doc->user_id;
 
+        $targetUserIds = [$docOwnerUserId];
+        $siblingUserIds = Document::where('title', $doc->title)
+            ->where('file_url', $doc->file_url)
+            ->where('id', '!=', $doc->id)
+            ->pluck('user_id')
+            ->toArray();
+        $targetUserIds = array_unique(array_merge($targetUserIds, $siblingUserIds));
+
         if ($status === 'Approved' && $role === 'admin fakultas') {
-            // Admin Fakultas approved → notify dosen: verified by fakultas, waiting LPPM
-            Notification::send(
-                $docOwnerUserId,
-                'doc_verified_fakultas',
-                'Dokumen Diverifikasi Fakultas',
-                "Dokumen '{$docTitle}' telah diverifikasi oleh Admin Fakultas. Menunggu persetujuan LPPM.",
-                ['doc_id' => $doc->id]
-            );
+            // Admin Fakultas approved → notify all co-authors: verified by fakultas, waiting LPPM
+            foreach ($targetUserIds as $uId) {
+                Notification::send(
+                    $uId,
+                    'doc_verified_fakultas',
+                    'Dokumen Diverifikasi Fakultas',
+                    "Dokumen '{$docTitle}' telah diverifikasi oleh Admin Fakultas. Menunggu persetujuan LPPM.",
+                    ['doc_id' => $doc->id]
+                );
+            }
             // Notify Admin Penelitian: document ready for their review
             $adminPenelitianList = User::where('role', 'admin penelitian')->get();
             foreach ($adminPenelitianList as $adminPenelitian) {
@@ -517,23 +588,27 @@ class AdminController extends Controller
                 );
             }
         } elseif ($status === 'Approved' && $role !== 'admin fakultas') {
-            // Final Approval by LPPM → notify dosen
-            Notification::send(
-                $docOwnerUserId,
-                'doc_approved',
-                'Dokumen Disetujui ✓',
-                "Selamat! Dokumen '{$docTitle}' telah disetujui dan poin sudah ditambahkan ke akun Anda.",
-                ['doc_id' => $doc->id]
-            );
+            // Final Approval by LPPM → notify all co-authors
+            foreach ($targetUserIds as $uId) {
+                Notification::send(
+                    $uId,
+                    'doc_approved',
+                    'Dokumen Disetujui ✓',
+                    "Selamat! Dokumen '{$docTitle}' telah disetujui dan poin sudah ditambahkan ke akun Anda.",
+                    ['doc_id' => $doc->id]
+                );
+            }
         } elseif ($status === 'Rejected') {
             $catatan = $request->catatan ? " Catatan: {$request->catatan}" : '';
-            Notification::send(
-                $docOwnerUserId,
-                'doc_rejected',
-                'Dokumen Ditolak',
-                "Dokumen '{$docTitle}' ditolak oleh admin.{$catatan} Silakan perbaiki dan ajukan ulang.",
-                ['doc_id' => $doc->id]
-            );
+            foreach ($targetUserIds as $uId) {
+                Notification::send(
+                    $uId,
+                    'doc_rejected',
+                    'Dokumen Ditolak',
+                    "Dokumen '{$docTitle}' ditolak oleh admin.{$catatan} Silakan perbaiki dan ajukan ulang.",
+                    ['doc_id' => $doc->id]
+                );
+            }
         }
 
         return response()->json(['success' => true]);
