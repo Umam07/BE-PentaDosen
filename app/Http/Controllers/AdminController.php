@@ -355,60 +355,98 @@ class AdminController extends Controller
                     'action' => 'Diverifikasi Fakultas',
                     'notes' => null
                 ]);
-            } else {
-                // Final Admin approval logic
-            // Calculate points: use calculatePoints() for Jurnal Internasional & Nasional, otherwise table weight
-            if ($doc->category === 'Jurnal Internasional' || $doc->category === 'Jurnal Nasional') {
-                $categoryPoints = round($doc->calculatePoints());
-            } else {
-                $weight = PointWeight::where('category', $doc->category)->first();
-                $categoryPoints = $weight ? $weight->weight_value : 0;
-            }
 
-            // Enforce HKI Hak Cipta limit: max 2/tahun
-            if ($doc->category === 'HKI Hak Cipta') {
-                $year = $doc->published_at ? \Carbon\Carbon::parse($doc->published_at)->year : null;
-                if ($year) {
-                    $approvedCount = Document::where('user_id', $doc->user_id)
-                        ->where('category', 'HKI Hak Cipta')
-                        ->where('status', 'Approved')
-                        ->whereYear('published_at', $year)
-                        ->count();
-                    if ($approvedCount >= 2) {
-                        $categoryPoints = 0;
+                // Also update sibling co-author documents
+                $siblingDocs = Document::where('title', $doc->title)
+                    ->where('file_url', $doc->file_url)
+                    ->where('id', '!=', $doc->id)
+                    ->get();
+                foreach ($siblingDocs as $sibling) {
+                    $sibling->update(['status' => 'Verified by Fakultas']);
+                    if (Cache::supportsTags()) {
+                        Cache::tags(["user_documents_{$sibling->user_id}"])->flush();
+                    } else {
+                        Cache::forget("user_documents_{$sibling->user_id}");
                     }
                 }
-            }
+            } else {
+                // Final Admin approval logic
+                // Calculate points: use calculatePoints() for Jurnal Internasional & Nasional, otherwise table weight
+                if ($doc->category === 'Jurnal Internasional' || $doc->category === 'Jurnal Nasional') {
+                    $categoryPoints = round($doc->calculatePoints());
+                } else {
+                    $weight = PointWeight::where('category', $doc->category)->first();
+                    $categoryPoints = $weight ? $weight->weight_value : 0;
+                }
 
-            // Only award KPI points if document is within accreditation period
-            $points = $doc->is_kpi_counted ? $categoryPoints : 0;
+                // Enforce HKI Hak Cipta limit: max 2/tahun
+                if ($doc->category === 'HKI Hak Cipta') {
+                    $year = $doc->published_at ? \Carbon\Carbon::parse($doc->published_at)->year : null;
+                    if ($year) {
+                        $approvedCount = Document::where('user_id', $doc->user_id)
+                            ->where('category', 'HKI Hak Cipta')
+                            ->where('status', 'Approved')
+                            ->whereYear('published_at', $year)
+                            ->count();
+                        if ($approvedCount >= 2) {
+                            $categoryPoints = 0;
+                        }
+                    }
+                }
 
-            DB::transaction(function () use ($doc, $status, $points, $request) {
-                $doc->update([
-                    'status' => $status,
-                    'awarded_points' => $points
-                ]);
-                
-                \App\Models\DocumentHistory::create([
-                    'document_id' => $doc->id,
-                    'user_id' => $request->admin_id ?? $doc->user_id,
-                    'action' => 'Disetujui Admin Penelitian',
-                    'notes' => null
-                ]);
+                // Only award KPI points if document is within accreditation period
+                $points = $doc->is_kpi_counted ? $categoryPoints : 0;
 
-                $totalDocPoints = Document::where('user_id', $doc->user_id)
-                    ->where('status', 'Approved')
-                    ->sum('awarded_points');
-                $totalPenPoints = \App\Models\Penelitian::where('user_id', $doc->user_id)
-                    ->where('status', 'Approved')
-                    ->sum('awarded_points');
-                $totalScopusPoints = \App\Models\ScopusPublication::where('user_id', $doc->user_id)
-                    ->sum('awarded_points');
+                DB::transaction(function () use ($doc, $status, $points, $request) {
+                    $doc->update([
+                        'status' => $status,
+                        'awarded_points' => $points
+                    ]);
+                    
+                    \App\Models\DocumentHistory::create([
+                        'document_id' => $doc->id,
+                        'user_id' => $request->admin_id ?? $doc->user_id,
+                        'action' => 'Disetujui Admin Penelitian',
+                        'notes' => null
+                    ]);
 
-                $doc->user->update([
-                    'total_kpi_points' => round($totalDocPoints + $totalPenPoints + $totalScopusPoints)
-                ]);
-            });
+                    if ($doc->user) {
+                        $doc->user->recalculateKpiPoints();
+                    }
+
+                    // Also approve and calculate points for sibling co-author documents
+                    $siblingDocs = Document::where('title', $doc->title)
+                        ->where('file_url', $doc->file_url)
+                        ->where('id', '!=', $doc->id)
+                        ->get();
+
+                    foreach ($siblingDocs as $sibling) {
+                        $siblingPoints = 0;
+                        if ($sibling->category === 'Jurnal Internasional' || $sibling->category === 'Jurnal Nasional') {
+                            $siblingPoints = round($sibling->calculatePoints());
+                        } else {
+                            $siblingPoints = $points;
+                        }
+                        if (!$sibling->is_kpi_counted) {
+                            $siblingPoints = 0;
+                        }
+
+                        $sibling->update([
+                            'status' => 'Approved',
+                            'awarded_points' => $siblingPoints
+                        ]);
+
+                        if ($sibling->user) {
+                            $sibling->user->recalculateKpiPoints();
+                        }
+
+                        if (Cache::supportsTags()) {
+                            Cache::tags(["user_documents_{$sibling->user_id}"])->flush();
+                        } else {
+                            Cache::forget("user_documents_{$sibling->user_id}");
+                        }
+                    }
+                });
             }
         } else {
             // Either admin fakultas or admin lppm can reject
@@ -423,6 +461,23 @@ class AdminController extends Controller
                 'action' => 'Ditolak ' . ($request->role === 'admin fakultas' ? 'Fakultas' : 'Penelitian'),
                 'notes' => $request->catatan ?? null
             ]);
+
+            // Also reject siblings
+            $siblingDocs = Document::where('title', $doc->title)
+                ->where('file_url', $doc->file_url)
+                ->where('id', '!=', $doc->id)
+                ->get();
+            foreach ($siblingDocs as $sibling) {
+                $sibling->update([
+                    'status' => $status,
+                    'catatan' => $request->catatan ?? null
+                ]);
+                if (Cache::supportsTags()) {
+                    Cache::tags(["user_documents_{$sibling->user_id}"])->flush();
+                } else {
+                    Cache::forget("user_documents_{$sibling->user_id}");
+                }
+            }
         }
 
         // Clear cache

@@ -52,6 +52,7 @@ class DocumentController extends Controller
             'journal' => 'nullable|string',
             'doi' => 'nullable|string',
             'authors' => 'nullable|string',
+            'co_authors_data' => 'nullable|string',
             'is_hyperauthor' => 'nullable|boolean',
         ]);
 
@@ -256,6 +257,9 @@ class DocumentController extends Controller
 
             return $doc;
         });
+
+        // Auto-distribute / link document to registered internal co-authors
+        $this->syncCoAuthorDocuments($doc, $request, $fileUrl, $publishedAt, $isKpi, $accreditationPeriod, $autoVerified);
 
         $actionName = 'Submit Document';
         if (str_contains(strtolower($request->category), 'jurnal')) {
@@ -897,6 +901,117 @@ class DocumentController extends Controller
             'message' => 'Corresponding status updated successfully',
             'publication' => $pub
         ]);
+    }
+
+    private function syncCoAuthorDocuments(Document $doc, Request $request, $fileUrl, $publishedAt, $isKpi, $accreditationPeriod, $autoVerified)
+    {
+        if (!$request->filled('co_authors_data')) {
+            return;
+        }
+
+        $coAuthorsList = json_decode($request->co_authors_data, true);
+        if (!is_array($coAuthorsList)) {
+            return;
+        }
+
+        $uploader = User::find($request->user_id);
+        $uploaderName = $uploader ? $uploader->name : 'Rekan Dosen';
+
+        foreach ($coAuthorsList as $coAuthor) {
+            $coUserId = $coAuthor['user_id'] ?? null;
+            if (!$coUserId || $coUserId == $request->user_id) {
+                continue;
+            }
+
+            $coUser = User::find($coUserId);
+            if (!$coUser) {
+                continue;
+            }
+
+            $coOrder = (int)($coAuthor['order'] ?? 2);
+            $coRole = $coAuthor['role'] ?? ($coOrder === 1 ? 'First Author' : 'Member Author');
+
+            // Check if co-author already has this document
+            $coDoc = Document::where('user_id', $coUserId)
+                ->where('title', $request->title)
+                ->first();
+
+            $coTempDoc = new Document([
+                'category' => $request->category,
+                'quartile' => $request->quartile,
+                'author_role' => $coRole,
+                'author_order' => $coOrder,
+                'total_authors' => $request->total_authors,
+                'is_corresponding' => false,
+                'subtype' => $request->subtype,
+                'is_hyperauthor' => $request->boolean('is_hyperauthor', false),
+                'sinta_rank' => $request->sinta_rank,
+                'citations' => (int)($request->citations ?? 0),
+            ]);
+            $coAwardedPoints = $autoVerified ? round($coTempDoc->calculatePoints()) : 0;
+
+            if ($coDoc) {
+                $coDoc->update([
+                    'category' => $request->category,
+                    'file_url' => $fileUrl,
+                    'published_at' => $publishedAt->format('Y-m-d'),
+                    'is_kpi_counted' => $isKpi,
+                    'accreditation_period' => $accreditationPeriod,
+                    'status' => $doc->status,
+                    'awarded_points' => $coAwardedPoints,
+                    'quartile' => $request->quartile,
+                    'subtype' => $request->subtype,
+                    'journal' => $request->journal,
+                    'doi' => $request->doi,
+                    'citations' => $request->filled('citations') ? (int)$request->citations : $coDoc->citations,
+                    'authors' => $request->authors,
+                    'total_authors' => (int)$request->total_authors,
+                    'author_role' => $coRole,
+                    'author_order' => $coOrder,
+                    'is_corresponding' => false,
+                    'is_hyperauthor' => $request->boolean('is_hyperauthor', false),
+                ]);
+            } else {
+                Document::create([
+                    'user_id' => $coUserId,
+                    'title' => $request->title,
+                    'category' => $request->category,
+                    'file_url' => $fileUrl,
+                    'published_at' => $publishedAt->format('Y-m-d'),
+                    'is_kpi_counted' => $isKpi,
+                    'accreditation_period' => $accreditationPeriod,
+                    'status' => $doc->status,
+                    'awarded_points' => $coAwardedPoints,
+                    'quartile' => $request->quartile,
+                    'subtype' => $request->subtype,
+                    'journal' => $request->journal,
+                    'doi' => $request->doi,
+                    'citations' => $request->filled('citations') ? (int)$request->citations : 0,
+                    'authors' => $request->authors,
+                    'total_authors' => (int)$request->total_authors,
+                    'author_role' => $coRole,
+                    'author_order' => $coOrder,
+                    'is_corresponding' => false,
+                    'is_hyperauthor' => $request->boolean('is_hyperauthor', false),
+                ]);
+            }
+
+            // Flush cache for co-author
+            if (Cache::supportsTags()) {
+                Cache::tags(["user_documents_{$coUserId}", 'documents', 'admin_documents', 'stats'])->flush();
+            } else {
+                Cache::forget("user_documents_{$coUserId}");
+            }
+
+            // Send in-app notification to co-author
+            Notification::send(
+                $coUserId,
+                'doc_coauthor_added',
+                'Ditambahkan ke Publikasi',
+                "Anda ditambahkan sebagai {$coRole} (urutan ke-{$coOrder}) pada publikasi: '{$request->title}' oleh {$uploaderName}.",
+                ['doc_id' => $doc->id, 'title' => $request->title]
+            );
+        }
     }
 }
 
