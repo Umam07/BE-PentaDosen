@@ -340,6 +340,9 @@ class DocumentController extends Controller
                 }
             }
 
+            $user = \App\Models\User::find($id);
+            $userName = $user ? $user->name : '';
+
             $manualDocs = Document::with('penelitian')->where('user_id', $id)->orderBy('published_at', 'desc')->get()->map(function($doc) use ($scopusMap, $scholarMap) {
                 $arr = $doc->toArray();
                 $norm = strtolower(preg_replace('/[^a-z0-9]/', '', $doc->title));
@@ -351,6 +354,11 @@ class DocumentController extends Controller
                     $arr['citations'] = $citations;
                     $arr['source_id'] = $sp->id;
                     $arr['category'] = 'Jurnal Nasional';
+                    if (empty($arr['authors'])) $arr['authors'] = $sp->authors;
+                    if (empty($arr['journal'])) $arr['journal'] = $sp->journal;
+                    if (empty($arr['author_role'])) $arr['author_role'] = $sp->author_role;
+                    if (empty($arr['author_order'])) $arr['author_order'] = $sp->author_order;
+                    if (empty($arr['total_authors'])) $arr['total_authors'] = $sp->total_authors;
                     $arr['awarded_points'] = (int)round(0.5 + ($citations > 0 ? 0.5 : 0) + min($citations, 500) * 0.25);
                 } elseif (isset($scopusMap[$norm])) {
                     $sp = $scopusMap[$norm];
@@ -365,6 +373,10 @@ class DocumentController extends Controller
                     $arr['is_corresponding'] = (bool)$sp->is_corresponding;
                     $arr['is_corresponding_confirmed'] = (bool)$sp->is_corresponding_confirmed;
                     $arr['is_hyperauthor'] = (bool)$sp->is_hyperauthor;
+                    if (empty($arr['authors'])) $arr['authors'] = $sp->authors;
+                    if (empty($arr['journal'])) $arr['journal'] = $sp->journal;
+                    if (empty($arr['doi'])) $arr['doi'] = $sp->doi;
+                    if (empty($arr['subtype'])) $arr['subtype'] = $sp->subtype;
                     $arr['awarded_points'] = $sp->awarded_points ?: $arr['awarded_points'];
                 } elseif ($doc->category === 'Google Scholar') {
                     $arr['category'] = 'Jurnal Nasional';
@@ -384,6 +396,10 @@ class DocumentController extends Controller
                 return [
                     'id' => 'scopus_' . $pub->id,
                     'title' => $pub->title,
+                    'authors' => $pub->authors,
+                    'journal' => $pub->journal,
+                    'doi' => $pub->doi,
+                    'subtype' => $pub->subtype,
                     'category' => 'Jurnal Internasional',
                     'published_at' => $pub->year ? ($pub->year . '-01-01') : null,
                     'citations' => (int)($pub->citations ?? 0),
@@ -405,19 +421,33 @@ class DocumentController extends Controller
             $scholarDocs = $scholarPubs->filter(function($pub) use ($existingManualTitles) {
                 $norm = strtolower(preg_replace('/[^a-z0-9]/', '', $pub->title));
                 return !in_array($norm, $existingManualTitles);
-            })->map(function($pub) {
+            })->map(function($pub) use ($userName) {
                 $citations = (int)($pub->citations ?? 0);
                 $awardedPoints = (int)round(0.5 + ($citations > 0 ? 0.5 : 0) + min($citations, 500) * 0.25);
+
+                $role = $pub->author_role;
+                $order = $pub->author_order;
+                $total = $pub->total_authors;
+
+                if (empty($role) || empty($total)) {
+                    $parsed = \App\Http\Controllers\ScholarController::parseScholarAuthors($userName, $pub->authors);
+                    $role = $role ?: $parsed['author_role'];
+                    $order = $order ?: $parsed['author_order'];
+                    $total = $total ?: $parsed['total_authors'];
+                }
+
                 return [
                     'id' => 'scholar_' . $pub->id,
                     'title' => $pub->title,
+                    'authors' => $pub->authors,
+                    'journal' => $pub->journal,
                     'category' => 'Jurnal Nasional',
                     'published_at' => $pub->year ? ($pub->year . '-01-01') : null,
                     'citations' => $citations,
                     'quartile' => null,
-                    'author_role' => null,
-                    'author_order' => null,
-                    'total_authors' => null,
+                    'author_role' => $role,
+                    'author_order' => $order,
+                    'total_authors' => $total,
                     'is_corresponding' => (bool)$pub->is_corresponding,
                     'is_corresponding_confirmed' => (bool)$pub->is_corresponding_confirmed,
                     'is_hyperauthor' => false,

@@ -97,14 +97,19 @@ class ScholarController extends Controller
             foreach ($publications as $pub) {
                 $year = isset($pub['year']) && is_numeric($pub['year']) ? (int)$pub['year'] : null;
                 $citations = isset($pub['cited_by']['value']) && is_numeric($pub['cited_by']['value']) ? (int)$pub['cited_by']['value'] : 0;
+                $authors = $pub['authors'] ?? '';
+                $parsedAuthor = $this->parseScholarAuthors($user->name, $authors);
 
                 ScholarPublication::updateOrCreate(
                     ['user_id' => $user->id, 'title' => $pub['title']],
                     [
-                        'authors' => $pub['authors'] ?? '',
-                        'journal' => $pub['publication'] ?? '',
-                        'year' => $year,
-                        'citations' => $citations,
+                        'authors'       => $authors,
+                        'author_role'   => $parsedAuthor['author_role'],
+                        'author_order'  => $parsedAuthor['author_order'],
+                        'total_authors' => $parsedAuthor['total_authors'],
+                        'journal'       => $pub['publication'] ?? '',
+                        'year'          => $year,
+                        'citations'     => $citations,
                     ]
                 );
 
@@ -126,20 +131,30 @@ class ScholarController extends Controller
 
                         if ($doc) {
                             $doc->update([
-                                'category' => 'Google Scholar',
-                                'awarded_points' => $awardedPoints,
+                                'category'      => 'Google Scholar',
+                                'awarded_points'=> $awardedPoints,
+                                'authors'       => $authors,
+                                'author_role'   => $parsedAuthor['author_role'],
+                                'author_order'  => $parsedAuthor['author_order'],
+                                'total_authors' => $parsedAuthor['total_authors'],
+                                'citations'     => $citations,
                             ]);
                         } else {
                             $doc = \App\Models\Document::create([
-                                'user_id' => $user->id,
-                                'title' => $pub['title'],
-                                'category' => 'Google Scholar',
-                                'file_url' => '', // Cannot be null, use empty string
-                                'published_at' => $publishedAt->format('Y-m-d'),
-                                'is_kpi_counted' => true,
+                                'user_id'              => $user->id,
+                                'title'                => $pub['title'],
+                                'category'             => 'Google Scholar',
+                                'file_url'             => '', // Cannot be null, use empty string
+                                'published_at'         => $publishedAt->format('Y-m-d'),
+                                'is_kpi_counted'       => true,
                                 'accreditation_period' => $kpiPeriodLabel,
-                                'status' => 'Approved',
-                                'awarded_points' => $awardedPoints,
+                                'status'               => 'Approved',
+                                'awarded_points'       => $awardedPoints,
+                                'authors'              => $authors,
+                                'author_role'          => $parsedAuthor['author_role'],
+                                'author_order'         => $parsedAuthor['author_order'],
+                                'total_authors'        => $parsedAuthor['total_authors'],
+                                'citations'            => $citations,
                             ]);
                         }
                     }
@@ -257,5 +272,97 @@ class ScholarController extends Controller
         });
 
         return response()->json($cached['data'], $cached['status']);
+    }
+
+    public static function parseScholarAuthors($userName, $authorsStr): array
+    {
+        if (empty($authorsStr) || !is_string($authorsStr)) {
+            return [
+                'total_authors' => 1,
+                'author_order'  => 1,
+                'author_role'   => 'Single Author',
+            ];
+        }
+
+        // Split by comma, semicolon, or " and "
+        $rawAuthors = preg_split('/[,;]+|\s+and\s+/i', $authorsStr);
+        $cleanAuthors = [];
+
+        foreach ($rawAuthors as $a) {
+            $trimmed = trim($a);
+            // Ignore ellipses or empty tokens
+            if ($trimmed !== '' && $trimmed !== '...' && $trimmed !== '…') {
+                $cleanAuthors[] = $trimmed;
+            }
+        }
+
+        $totalAuthors = max(1, count($cleanAuthors));
+
+        if ($totalAuthors === 1) {
+            return [
+                'total_authors' => 1,
+                'author_order'  => 1,
+                'author_role'   => 'Single Author',
+            ];
+        }
+
+        // Match user's name against each author token
+        $matchedIndex = -1;
+        foreach ($cleanAuthors as $idx => $authorName) {
+            if (self::matchAuthorName($userName, $authorName)) {
+                $matchedIndex = $idx;
+                break;
+            }
+        }
+
+        if ($matchedIndex === 0) {
+            $authorOrder = 1;
+            $authorRole = 'First Author';
+        } elseif ($matchedIndex > 0) {
+            $authorOrder = $matchedIndex + 1;
+            $authorRole = 'Member Author';
+        } else {
+            // Default if name is not explicitly parsed
+            $authorOrder = 1;
+            $authorRole = 'First Author';
+        }
+
+        return [
+            'total_authors' => $totalAuthors,
+            'author_order'  => $authorOrder,
+            'author_role'   => $authorRole,
+        ];
+    }
+
+    private static function matchAuthorName($userName, $authorName): bool
+    {
+        if (!$userName || !$authorName) return false;
+
+        $userNorm = strtolower(preg_replace('/[^a-z0-9 ]/i', '', $userName));
+        $titles = ['skom', 'mkom', 'dr', 'drg', 'ssi', 'mkes', 'spsi', 'mpsi', 'sh', 'mh', 'prof', 'ss', 'mt', 'st', 'phd', 'ir', 'mp', 'sp'];
+        foreach ($titles as $t) {
+            $userNorm = str_replace($t, '', $userNorm);
+        }
+        $userWords = array_values(array_filter(explode(' ', trim($userNorm))));
+
+        $authorNorm = strtolower(preg_replace('/[^a-z0-9 ]/i', '', $authorName));
+        foreach ($titles as $t) {
+            $authorNorm = str_replace($t, '', $authorNorm);
+        }
+        $authorWords = array_values(array_filter(explode(' ', trim($authorNorm))));
+
+        if (empty($userWords) || empty($authorWords)) return false;
+
+        $matches = 0;
+        foreach ($userWords as $uw) {
+            foreach ($authorWords as $aw) {
+                if ($uw === $aw || (strlen($aw) === 1 && str_starts_with($uw, $aw)) || (strlen($uw) === 1 && str_starts_with($aw, $uw))) {
+                    $matches++;
+                    break;
+                }
+            }
+        }
+
+        return $matches >= 2 || (count($userWords) === 1 && $matches >= 1) || (count($authorWords) === 1 && $matches >= 1);
     }
 }

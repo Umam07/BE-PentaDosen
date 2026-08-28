@@ -114,14 +114,16 @@ class Document extends Model
             ];
             $basePoints = $basePointsMap[$q] ?? 33.0;
         } else {
-            // Check if document has citations (> 0) for Google Scholar calculation
-            $citations = (int)($this->citations ?? 0);
-            if ($citations > 0) {
-                return (float)round(0.5 + 0.5 + min($citations, 500) * 0.25);
+            // Check if document is pure Google Scholar synced without SINTA rank
+            if ($this->category === 'Google Scholar' || empty($this->sinta_rank)) {
+                $citations = (int)($this->citations ?? 0);
+                if ($citations > 0) {
+                    return (float)round(0.5 + 0.5 + min($citations, 500) * 0.25);
+                }
             }
 
             // Otherwise, Jurnal Nasional base weight based on SINTA rank
-            $rank = strtoupper((string)($this->sinta_rank ?? ''));
+            $rank = strtoupper((string)($this->sinta_rank ?? 'NON-SINTA'));
             $sintaPointsMap = [
                 'S1' => 25.0,
                 'S2' => 25.0,
@@ -145,6 +147,15 @@ class Document extends Model
                 return 0.6 * $basePoints;
             } else {
                 return 1.0;
+            }
+        }
+
+        if ($category === 'Jurnal Nasional') {
+            if ($authorOrder === 1 || $this->author_role === 'First Author') {
+                return 0.6 * $basePoints;
+            } else {
+                $n = max(1, $totalAuthors - 1);
+                return (0.4 * $basePoints) / $n;
             }
         }
 

@@ -236,10 +236,27 @@ class AdminController extends Controller
                 $citations = (int)($pub->citations ?? 0);
                 $awardedPoints = round(0.5 + ($citations > 0 ? 0.5 : 0) + min($citations, 500) * 0.25);
 
+                $role = $pub->author_role;
+                $order = $pub->author_order;
+                $total = $pub->total_authors;
+
+                if (empty($role) || empty($total)) {
+                    $userName = $pub->user ? $pub->user->name : '';
+                    $parsed = \App\Http\Controllers\ScholarController::parseScholarAuthors($userName, $pub->authors);
+                    $role = $role ?: $parsed['author_role'];
+                    $order = $order ?: $parsed['author_order'];
+                    $total = $total ?: $parsed['total_authors'];
+                }
+
                 return [
                     'id' => 'scholar_' . $pub->id,
                     'user_id' => $pub->user_id,
                     'title' => $pub->title,
+                    'authors' => $pub->authors,
+                    'author_role' => $role,
+                    'author_order' => $order,
+                    'total_authors' => $total,
+                    'journal' => $pub->journal,
                     'category' => 'Jurnal Nasional',
                     'file_url' => '-',
                     'published_at' => $publishedAt,
