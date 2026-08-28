@@ -357,8 +357,13 @@ class AdminController extends Controller
                 ]);
             } else {
                 // Final Admin approval logic
-            $weight = PointWeight::where('category', $doc->category)->first();
-            $categoryPoints = $weight ? $weight->weight_value : 0;
+            // Calculate points: use calculatePoints() for Jurnal Internasional & Nasional, otherwise table weight
+            if ($doc->category === 'Jurnal Internasional' || $doc->category === 'Jurnal Nasional') {
+                $categoryPoints = round($doc->calculatePoints());
+            } else {
+                $weight = PointWeight::where('category', $doc->category)->first();
+                $categoryPoints = $weight ? $weight->weight_value : 0;
+            }
 
             // Enforce HKI Hak Cipta limit: max 2/tahun
             if ($doc->category === 'HKI Hak Cipta') {

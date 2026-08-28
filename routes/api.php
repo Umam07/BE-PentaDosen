@@ -54,6 +54,7 @@ Route::middleware(['throttle:api'])->group(function () {
     Route::get('/admin/documents', [AdminController::class, 'getPendingDocuments']);
     Route::get('/admin/documents/all', [AdminController::class, 'getAllDocuments']);
     Route::get('/admin/lecturers', [AdminController::class, 'getAllLecturers']);
+    Route::get('/lecturers/simple-list', [UserController::class, 'getLecturersList']);
     Route::post('/admin/lecturers/bulk-scholar', [AdminController::class, 'bulkUpdateScholar']);
     Route::post('/admin/lecturers/bulk-scopus', [AdminController::class, 'bulkUpdateScopus']);
     Route::post('/admin/documents/{id}/verify', [AdminController::class, 'verifyDocument']);

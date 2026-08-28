@@ -407,4 +407,26 @@ class UserController extends Controller
 
         return response()->json($stats);
     }
+
+    public function getLecturersList(Request $request)
+    {
+        $cacheKey = 'lecturers_simple_list';
+        $fetchData = function () {
+            return User::where('role', 'dosen')
+                ->select('id', 'name', 'nidn', 'email', 'program_studi', 'fakultas')
+                ->orderBy('name', 'asc')
+                ->get();
+        };
+
+        if (Cache::supportsTags()) {
+            $lecturers = Cache::tags(['lecturers'])->remember($cacheKey, 600, $fetchData);
+        } else {
+            $lecturers = Cache::remember($cacheKey, 600, $fetchData);
+        }
+
+        return response()->json([
+            'success' => true,
+            'lecturers' => $lecturers,
+        ]);
+    }
 }

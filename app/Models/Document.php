@@ -10,7 +10,11 @@ class Document extends Model
         'user_id',
         'penelitian_id',
         'title',
+        'journal',
+        'doi',
+        'authors',
         'category',
+        'subtype',
         'file_url',
         'published_at',
         'is_kpi_counted',
@@ -22,6 +26,7 @@ class Document extends Model
         'author_role',
         'is_hyperauthor',
         'author_order',
+        'total_authors',
         'is_corresponding',
         'is_corresponding_confirmed',
         'hki_type',
@@ -37,6 +42,8 @@ class Document extends Model
         'is_hyperauthor' => 'boolean',
         'is_corresponding' => 'boolean',
         'is_corresponding_confirmed' => 'boolean',
+        'total_authors' => 'integer',
+        'author_order' => 'integer',
         'citations' => 'integer',
     ];
 
@@ -69,6 +76,34 @@ class Document extends Model
         $isHyper = (bool)($this->is_hyperauthor || $totalAuthors > 16);
 
         if ($category === 'Jurnal Internasional') {
+            $subtype = $this->subtype;
+            $isArticle = true;
+            if ($subtype && strtolower($subtype) !== 'ar' && strtolower($subtype) !== 'article') {
+                $isArticle = false;
+            }
+
+            if (!$isArticle) {
+                // Non-Article: Single = 30, First = 18, Member = 12 / n
+                if ($this->author_role === 'Single Author') {
+                    return 30.0;
+                } elseif ($this->author_role === 'First Author') {
+                    return 18.0;
+                } else {
+                    $n = max(1, $totalAuthors - 1);
+                    return 12.0 / $n;
+                }
+            }
+
+            if ($isHyper) {
+                if ($this->author_role === 'Single Author') {
+                    return 40.0;
+                } elseif ($this->author_role === 'First Author') {
+                    return 24.0;
+                } else {
+                    return 1.0;
+                }
+            }
+
             $q = in_array($this->quartile, ['Q1', 'Q2', 'Q3', 'Q4']) ? $this->quartile : 'None';
             $basePointsMap = [
                 'Q1' => 40.0,

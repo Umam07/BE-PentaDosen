@@ -44,6 +44,15 @@ class DocumentController extends Controller
             'is_corresponding' => 'nullable|boolean',
             'sinta_rank' => 'nullable|string',
             'citations' => 'nullable|integer|min:0',
+            'quartile' => 'nullable|string',
+            'author_role' => 'nullable|string',
+            'author_order' => 'nullable|integer|min:1',
+            'total_authors' => 'nullable|integer|min:1',
+            'subtype' => 'nullable|string',
+            'journal' => 'nullable|string',
+            'doi' => 'nullable|string',
+            'authors' => 'nullable|string',
+            'is_hyperauthor' => 'nullable|boolean',
         ]);
 
         // Duplicate check
@@ -89,8 +98,24 @@ class DocumentController extends Controller
         // If status is sent as Approved (Admin upload), set it
         if ($requestedStatus === 'Approved') {
             $autoVerified = true;
-            $weight = PointWeight::where('category', $request->category)->first();
-            $awardedPoints = $weight ? $weight->weight_value : 0;
+            if ($request->category === 'Jurnal Internasional' || $request->category === 'Jurnal Nasional') {
+                $tempDoc = new Document([
+                    'category' => $request->category,
+                    'quartile' => $request->quartile,
+                    'author_role' => $request->author_role,
+                    'author_order' => $request->author_order,
+                    'total_authors' => $request->total_authors,
+                    'is_corresponding' => $request->boolean('is_corresponding', false),
+                    'subtype' => $request->subtype,
+                    'is_hyperauthor' => $request->boolean('is_hyperauthor', false),
+                    'sinta_rank' => $request->sinta_rank,
+                    'citations' => (int)($request->citations ?? 0),
+                ]);
+                $awardedPoints = round($tempDoc->calculatePoints());
+            } else {
+                $weight = PointWeight::where('category', $request->category)->first();
+                $awardedPoints = $weight ? $weight->weight_value : 0;
+            }
 
             if ($request->category === 'HKI Hak Cipta') {
                 $year = $publishedAt->year;
@@ -118,8 +143,24 @@ class DocumentController extends Controller
 
             if ($scholarMatch || $scopusMatch) {
                 $autoVerified = true;
-                $weight = PointWeight::where('category', $request->category)->first();
-                $awardedPoints = $weight ? $weight->weight_value : 0;
+                if ($request->category === 'Jurnal Internasional' || $request->category === 'Jurnal Nasional') {
+                    $tempDoc = new Document([
+                        'category' => $request->category,
+                        'quartile' => $request->quartile,
+                        'author_role' => $request->author_role,
+                        'author_order' => $request->author_order,
+                        'total_authors' => $request->total_authors,
+                        'is_corresponding' => $request->boolean('is_corresponding', false),
+                        'subtype' => $request->subtype,
+                        'is_hyperauthor' => $request->boolean('is_hyperauthor', false),
+                        'sinta_rank' => $request->sinta_rank,
+                        'citations' => (int)($request->citations ?? 0),
+                    ]);
+                    $awardedPoints = round($tempDoc->calculatePoints());
+                } else {
+                    $weight = PointWeight::where('category', $request->category)->first();
+                    $awardedPoints = $weight ? $weight->weight_value : 0;
+                }
 
                 if ($request->category === 'HKI Hak Cipta') {
                     $year = $publishedAt->year;
@@ -153,12 +194,22 @@ class DocumentController extends Controller
                     'is_kpi_counted' => $isKpi,
                     'accreditation_period' => $accreditationPeriod,
                     'status' => $autoVerified ? 'Approved' : 'Pending',
-                    'is_corresponding' => $request->boolean('is_corresponding', $existingDoc->is_corresponding),
+                    'is_corresponding' => $request->has('is_corresponding') ? $request->boolean('is_corresponding') : $existingDoc->is_corresponding,
+                    'is_corresponding_confirmed' => $request->has('is_corresponding') ? true : $existingDoc->is_corresponding_confirmed,
                     'hki_type' => $request->hki_type,
                     'inventor_name' => $request->inventor_name,
                     'sinta_rank' => $request->sinta_rank ?? $existingDoc->sinta_rank,
                     'is_sinta_confirmed' => $request->filled('sinta_rank') ? true : $existingDoc->is_sinta_confirmed,
                     'citations' => $request->filled('citations') ? (int)$request->citations : $existingDoc->citations,
+                    'quartile' => $request->quartile ?? $existingDoc->quartile,
+                    'author_role' => $request->author_role ?? $existingDoc->author_role,
+                    'author_order' => $request->filled('author_order') ? (int)$request->author_order : $existingDoc->author_order,
+                    'total_authors' => $request->filled('total_authors') ? (int)$request->total_authors : $existingDoc->total_authors,
+                    'subtype' => $request->subtype ?? $existingDoc->subtype,
+                    'journal' => $request->journal ?? $existingDoc->journal,
+                    'doi' => $request->doi ?? $existingDoc->doi,
+                    'authors' => $request->authors ?? $existingDoc->authors,
+                    'is_hyperauthor' => $request->has('is_hyperauthor') ? $request->boolean('is_hyperauthor') : $existingDoc->is_hyperauthor,
                 ]);
                 $doc = $existingDoc;
             } else {
@@ -173,11 +224,21 @@ class DocumentController extends Controller
                     'status' => $autoVerified ? 'Approved' : 'Pending',
                     'awarded_points' => $awardedPoints,
                     'is_corresponding' => $request->boolean('is_corresponding', false),
+                    'is_corresponding_confirmed' => $request->has('is_corresponding'),
                     'hki_type' => $request->hki_type,
                     'inventor_name' => $request->inventor_name,
                     'sinta_rank' => $request->sinta_rank,
                     'is_sinta_confirmed' => $request->filled('sinta_rank') ? true : false,
                     'citations' => $request->filled('citations') ? (int)$request->citations : 0,
+                    'quartile' => $request->quartile,
+                    'author_role' => $request->author_role,
+                    'author_order' => $request->filled('author_order') ? (int)$request->author_order : ($request->author_role === 'First Author' || $request->author_role === 'Single Author' ? 1 : 2),
+                    'total_authors' => $request->filled('total_authors') ? (int)$request->total_authors : 1,
+                    'subtype' => $request->subtype ?: 'Article',
+                    'journal' => $request->journal,
+                    'doi' => $request->doi,
+                    'authors' => $request->authors,
+                    'is_hyperauthor' => $request->boolean('is_hyperauthor', false),
                 ]);
 
                 // If auto-verified, update user's total KPI points
@@ -486,6 +547,17 @@ class DocumentController extends Controller
             'is_corresponding' => 'nullable|boolean',
             'hki_type' => 'nullable|string',
             'inventor_name' => 'nullable|string',
+            'quartile' => 'nullable|string',
+            'author_role' => 'nullable|string',
+            'author_order' => 'nullable|integer|min:1',
+            'total_authors' => 'nullable|integer|min:1',
+            'subtype' => 'nullable|string',
+            'journal' => 'nullable|string',
+            'doi' => 'nullable|string',
+            'authors' => 'nullable|string',
+            'is_hyperauthor' => 'nullable|boolean',
+            'sinta_rank' => 'nullable|string',
+            'citations' => 'nullable|integer|min:0',
         ]);
 
         $publishedAt = Carbon::parse($request->published_at);
@@ -519,9 +591,40 @@ class DocumentController extends Controller
         $doc->published_at        = $publishedAt->format('Y-m-d');
         $doc->is_kpi_counted      = $isKpi;
         $doc->accreditation_period = $accreditationPeriod;
-        $doc->is_corresponding    = $request->boolean('is_corresponding', $doc->is_corresponding);
+        $doc->is_corresponding    = $request->has('is_corresponding') ? $request->boolean('is_corresponding') : $doc->is_corresponding;
+        if ($request->has('is_corresponding')) {
+            $doc->is_corresponding_confirmed = true;
+        }
         $doc->hki_type = $request->hki_type;
         $doc->inventor_name = $request->inventor_name;
+
+        if ($request->has('quartile')) {
+            $doc->quartile = $request->quartile;
+        }
+        if ($request->has('author_role')) {
+            $doc->author_role = $request->author_role;
+        }
+        if ($request->has('author_order')) {
+            $doc->author_order = (int)$request->author_order;
+        }
+        if ($request->has('total_authors')) {
+            $doc->total_authors = (int)$request->total_authors;
+        }
+        if ($request->has('subtype')) {
+            $doc->subtype = $request->subtype;
+        }
+        if ($request->has('journal')) {
+            $doc->journal = $request->journal;
+        }
+        if ($request->has('doi')) {
+            $doc->doi = $request->doi;
+        }
+        if ($request->has('authors')) {
+            $doc->authors = $request->authors;
+        }
+        if ($request->has('is_hyperauthor')) {
+            $doc->is_hyperauthor = $request->boolean('is_hyperauthor');
+        }
 
         if ($request->has('sinta_rank')) {
             $doc->sinta_rank = $request->sinta_rank;
