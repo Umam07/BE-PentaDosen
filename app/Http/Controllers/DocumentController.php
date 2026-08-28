@@ -971,8 +971,15 @@ class DocumentController extends Controller
                     'is_corresponding' => false,
                     'is_hyperauthor' => $request->boolean('is_hyperauthor', false),
                 ]);
+
+                DocumentHistory::create([
+                    'document_id' => $coDoc->id,
+                    'user_id' => $request->user_id,
+                    'action' => 'Dokumen Diperbarui (Penulis Pendamping)',
+                    'notes' => "Diperbarui oleh {$uploaderName}"
+                ]);
             } else {
-                Document::create([
+                $newCoDoc = Document::create([
                     'user_id' => $coUserId,
                     'title' => $request->title,
                     'category' => $request->category,
@@ -993,6 +1000,13 @@ class DocumentController extends Controller
                     'author_order' => $coOrder,
                     'is_corresponding' => false,
                     'is_hyperauthor' => $request->boolean('is_hyperauthor', false),
+                ]);
+
+                DocumentHistory::create([
+                    'document_id' => $newCoDoc->id,
+                    'user_id' => $request->user_id,
+                    'action' => 'Dokumen Didaftarkan (Penulis Pendamping)',
+                    'notes' => "Ditambahkan oleh {$uploaderName} ({$coRole})"
                 ]);
             }
 

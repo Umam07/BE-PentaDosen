@@ -424,6 +424,12 @@ class AdminController extends Controller
                     ->get();
                 foreach ($siblingDocs as $sibling) {
                     $sibling->update(['status' => 'Verified by Fakultas']);
+                    \App\Models\DocumentHistory::create([
+                        'document_id' => $sibling->id,
+                        'user_id' => $request->admin_id ?? $doc->user_id,
+                        'action' => 'Diverifikasi Fakultas',
+                        'notes' => null
+                    ]);
                     if (Cache::supportsTags()) {
                         Cache::tags(["user_documents_{$sibling->user_id}"])->flush();
                     } else {
@@ -497,6 +503,13 @@ class AdminController extends Controller
                             'awarded_points' => $siblingPoints
                         ]);
 
+                        \App\Models\DocumentHistory::create([
+                            'document_id' => $sibling->id,
+                            'user_id' => $request->admin_id ?? $doc->user_id,
+                            'action' => 'Disetujui Admin Penelitian',
+                            'notes' => null
+                        ]);
+
                         if ($sibling->user) {
                             $sibling->user->recalculateKpiPoints();
                         }
@@ -533,6 +546,14 @@ class AdminController extends Controller
                     'status' => $status,
                     'catatan' => $request->catatan ?? null
                 ]);
+
+                \App\Models\DocumentHistory::create([
+                    'document_id' => $sibling->id,
+                    'user_id' => $request->admin_id ?? $doc->user_id,
+                    'action' => 'Ditolak ' . ($request->role === 'admin fakultas' ? 'Fakultas' : 'Penelitian'),
+                    'notes' => $request->catatan ?? null
+                ]);
+
                 if (Cache::supportsTags()) {
                     Cache::tags(["user_documents_{$sibling->user_id}"])->flush();
                 } else {
