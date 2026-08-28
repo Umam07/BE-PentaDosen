@@ -32,6 +32,12 @@ class UserController extends Controller
                 $user->save();
             }
 
+            // Sync avatar from scholarData if avatar is missing
+            if (!$user->avatar && $user->scholarData && $user->scholarData->thumbnail) {
+                $user->avatar = $user->scholarData->thumbnail;
+                $user->save();
+            }
+
             \App\Models\ActivityLog::log($user->id, 'Login', 'User berhasil login ke sistem via Database Local');
             return response()->json(['user' => $user]);
         }
@@ -175,6 +181,12 @@ class UserController extends Controller
             if ($scholarData) {
                 $scholarData->document_count = count($publications);
             }
+        }
+
+        // Sync avatar if missing but available in scholarData
+        if (!$user->avatar && $scholarData && $scholarData->thumbnail) {
+            $user->avatar = $scholarData->thumbnail;
+            $user->save();
         }
 
         // Only fetch Scopus data if user has a Scopus ID
