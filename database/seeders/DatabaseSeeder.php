@@ -89,12 +89,12 @@ class DatabaseSeeder extends Seeder
             ['name' => 'Nurul Huda', 'email' => 'nurul.huda@univ.edu'],
             ['name' => 'Kholis Ernawati', 'email' => 'kholis.ernawati@univ.edu'],
             ['name' => 'Endang Purwaningsih', 'email' => 'endang.purwaningsih@univ.edu'],
-            ['name' => 'nurmaya', 'email' => 'nurmaya@univ.edu'],
-            ['name' => 'muhammad fathurrachman', 'email' => 'fathurrachman@univ.edu'],
+            ['name' => 'Nurmaya', 'email' => 'nurmaya@univ.edu'],
+            ['name' => 'Muhammad Fathurrachman', 'email' => 'fathurrachman@univ.edu'],
             ['name' => 'Paramaresthi Windriyani', 'email' => 'paramaresthi.windriyani@univ.edu'],
             ['name' => 'Herika Hayurani', 'email' => 'herika.hayurani@univ.edu'],
-            ['name' => 'sari zakiah akmal', 'email' => 'sari.zakiah@univ.edu'],
-            ['name' => 'wening sari', 'email' => 'wening.sari@univ.edu'],
+            ['name' => 'Sari Zakiah Akmal', 'email' => 'sari.zakiah@univ.edu'],
+            ['name' => 'Wening Sari', 'email' => 'wening.sari@univ.edu'],
         ];
 
         foreach ($dummyDosen as $dosenData) {
