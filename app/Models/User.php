@@ -92,9 +92,11 @@ class User extends Authenticatable
         }
 
         // A. Document points within KPI period (status = Approved and is_kpi_counted = true)
+        // Internal manual documents only (excluding Google Scholar category if any)
         $totalDocPoints = $this->documents()
             ->where('status', 'Approved')
             ->where('is_kpi_counted', true)
+            ->where('category', '!=', 'Google Scholar')
             ->sum('awarded_points');
 
         // B. Penelitian points within KPI period (status = Approved and year matches the KPI period)
@@ -108,7 +110,27 @@ class User extends Authenticatable
             ->whereBetween('year', [$kpiYearStart, $kpiYearEnd])
             ->sum('awarded_points');
 
-        $this->update(['total_kpi_points' => round($totalDocPoints + $totalPenPoints + $totalScopusPoints)]);
+        // D. Google Scholar points (publications within KPI period, excluding cross-indexed Scopus to avoid double counting)
+        $scopusTitles = $this->scopusPublications()
+            ->pluck('title')
+            ->map(fn($t) => preg_replace('/[^a-z0-9]/', '', strtolower($t)))
+            ->filter()
+            ->toArray();
+
+        $scholarPoints = 0;
+        $scholarPubs = $this->publications()
+            ->whereBetween('year', [$kpiYearStart, $kpiYearEnd])
+            ->get();
+
+        foreach ($scholarPubs as $pub) {
+            $normTitle = preg_replace('/[^a-z0-9]/', '', strtolower($pub->title));
+            if (!in_array($normTitle, $scopusTitles)) {
+                $citations = (int)($pub->citations ?? 0);
+                $scholarPoints += round(0.5 + ($citations > 0 ? 0.5 : 0) + min($citations, 500) * 0.25);
+            }
+        }
+
+        $this->update(['total_kpi_points' => round($totalDocPoints + $totalPenPoints + $totalScopusPoints + $scholarPoints)]);
     }
 
     /**

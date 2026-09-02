@@ -113,52 +113,6 @@ class ScholarController extends Controller
                     ]
                 );
 
-                // Calculate GS Points:
-                // GS DOCUMENT: 0.5
-                // GS DOCUMENT TERSITASI: 0.5 (if citations > 0)
-                // GS CITATION PER DOCUMENT NUMBER (CUT OFF = 500): 0.25 (citations * 0.25, max 500 citations)
-                $awardedPoints = round(0.5 + ($citations > 0 ? 0.5 : 0) + min($citations, 500) * 0.25);
-
-                // Add to Document table automatically if within KPI period
-                if ($year) {
-                    $publishedAt = \Carbon\Carbon::createFromDate($year, 1, 1);
-                    $isKpi = $publishedAt->between($kpiPeriodStart, $kpiPeriodEnd);
-
-                    if ($isKpi) {
-                        $doc = \App\Models\Document::where('user_id', $user->id)
-                            ->where('title', $pub['title'])
-                            ->first();
-
-                        if ($doc) {
-                            $doc->update([
-                                'category'      => 'Google Scholar',
-                                'awarded_points'=> $awardedPoints,
-                                'authors'       => $authors,
-                                'author_role'   => $parsedAuthor['author_role'],
-                                'author_order'  => $parsedAuthor['author_order'],
-                                'total_authors' => $parsedAuthor['total_authors'],
-                                'citations'     => $citations,
-                            ]);
-                        } else {
-                            $doc = \App\Models\Document::create([
-                                'user_id'              => $user->id,
-                                'title'                => $pub['title'],
-                                'category'             => 'Google Scholar',
-                                'file_url'             => '', // Cannot be null, use empty string
-                                'published_at'         => $publishedAt->format('Y-m-d'),
-                                'is_kpi_counted'       => true,
-                                'accreditation_period' => $kpiPeriodLabel,
-                                'status'               => 'Approved',
-                                'awarded_points'       => $awardedPoints,
-                                'authors'              => $authors,
-                                'author_role'          => $parsedAuthor['author_role'],
-                                'author_order'         => $parsedAuthor['author_order'],
-                                'total_authors'        => $parsedAuthor['total_authors'],
-                                'citations'            => $citations,
-                            ]);
-                        }
-                    }
-                }
             }
 
             // Recalculate total kpi points
@@ -199,12 +153,6 @@ class ScholarController extends Controller
             if (is_null($newScholarId)) {
                 ScholarData::where('user_id', $user->id)->delete();
                 ScholarPublication::where('user_id', $user->id)->delete();
-                
-                // Also remove auto-synced documents from Scholar to keep points accurate
-                \App\Models\Document::where('user_id', $user->id)
-                    ->where('category', 'Google Scholar')
-                    ->where('file_url', '')
-                    ->delete();
                 
                 // Recalculate total kpi points
                 $user->recalculateKpiPoints();

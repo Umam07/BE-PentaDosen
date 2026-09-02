@@ -114,15 +114,7 @@ class Document extends Model
             ];
             $basePoints = $basePointsMap[$q] ?? 33.0;
         } else {
-            // Check if document is pure Google Scholar synced without SINTA rank
-            if ($this->category === 'Google Scholar' || empty($this->sinta_rank)) {
-                $citations = (int)($this->citations ?? 0);
-                if ($citations > 0) {
-                    return (float)round(0.5 + 0.5 + min($citations, 500) * 0.25);
-                }
-            }
-
-            // Otherwise, Jurnal Nasional base weight based on SINTA rank
+            // Jurnal Nasional base weight based on SINTA rank
             $rank = strtoupper((string)($this->sinta_rank ?? 'NON-SINTA'));
             $sintaPointsMap = [
                 'S1' => 25.0,

@@ -16,6 +16,7 @@ class ScopusPublication extends Model
         'doi',
         'quartile',
         'author_role',
+        'author_order',
         'is_hyperauthor',
         'awarded_points',
         'subtype',
@@ -28,6 +29,7 @@ class ScopusPublication extends Model
         'is_hyperauthor' => 'boolean',
         'awarded_points' => 'double',
         'total_authors' => 'integer',
+        'author_order' => 'integer',
         'is_corresponding' => 'boolean',
         'is_corresponding_confirmed' => 'boolean',
     ];

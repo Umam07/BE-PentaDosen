@@ -356,12 +356,14 @@ class ScopusController extends Controller
                 }
 
                 // 5. Calculate points dynamically using Model helper
+                $resolvedQuartile = ($quartile && $quartile !== 'None') ? $quartile : null;
+
                 $tempPub = new \App\Models\ScopusPublication([
                     'author_role' => $authorRole,
                     'total_authors' => $totalAuthors,
                     'author_order' => $authorOrder,
                     'is_hyperauthor' => $isHyperauthor,
-                    'quartile' => $quartile === 'None' ? null : $quartile,
+                    'quartile' => $resolvedQuartile,
                     'subtype' => $subtype ?: ($subtypeDescription ?: null),
                     'is_corresponding' => $isCorresponding,
                 ]);
@@ -377,7 +379,7 @@ class ScopusController extends Controller
                     'year'          => $year,
                     'citations'     => $citations,
                     'doi'           => $entry['prism:doi'] ?? null,
-                    'quartile'      => $quartile === 'None' ? null : $quartile,
+                    'quartile'      => $resolvedQuartile,
                     'author_role'   => $authorRole,
                     'author_order'  => $authorOrder,
                     'is_corresponding' => $isCorresponding,
@@ -427,12 +429,6 @@ class ScopusController extends Controller
             if (is_null($newScopusId)) {
                 \App\Models\ScopusData::where('user_id', $user->id)->delete();
                 \App\Models\ScopusPublication::where('user_id', $user->id)->delete();
-                
-                // Also remove auto-synced documents from Scopus to keep points accurate
-                \App\Models\Document::where('user_id', $user->id)
-                    ->where('category', 'Jurnal Internasional')
-                    ->where('file_url', '')
-                    ->delete();
                 
                 // Recalculate total kpi points
                 $user->recalculateKpiPoints();
