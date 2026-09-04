@@ -93,11 +93,20 @@ class User extends Authenticatable
 
         // A. Document points within KPI period (status = Approved and is_kpi_counted = true)
         // Internal manual documents only (excluding Google Scholar category if any)
-        $totalDocPoints = $this->documents()
+        $approvedManualDocs = $this->documents()
             ->where('status', 'Approved')
             ->where('is_kpi_counted', true)
             ->where('category', '!=', 'Google Scholar')
-            ->sum('awarded_points');
+            ->get();
+
+        $totalDocPoints = $approvedManualDocs->sum('awarded_points');
+
+        // Normalized titles of approved manual documents to prevent double-counting with external APIs
+        $manualTitles = $approvedManualDocs
+            ->pluck('title')
+            ->map(fn($t) => preg_replace('/[^a-z0-9]/', '', strtolower($t)))
+            ->filter()
+            ->toArray();
 
         // B. Penelitian points within KPI period (status = Approved and year matches the KPI period)
         $totalPenPoints = $this->penelitian()
@@ -105,18 +114,26 @@ class User extends Authenticatable
             ->whereBetween('tahun', [$kpiYearStart, $kpiYearEnd])
             ->sum('awarded_points');
 
-        // C. Scopus points within KPI period (year matches the KPI period)
-        $totalScopusPoints = $this->scopusPublications()
+        // C. Scopus points within KPI period (year matches the KPI period, excluding papers already counted in manual approved documents)
+        $scopusPubs = $this->scopusPublications()
             ->whereBetween('year', [$kpiYearStart, $kpiYearEnd])
-            ->sum('awarded_points');
+            ->get();
 
-        // D. Google Scholar points (publications within KPI period, excluding cross-indexed Scopus to avoid double counting)
-        $scopusTitles = $this->scopusPublications()
-            ->pluck('title')
-            ->map(fn($t) => preg_replace('/[^a-z0-9]/', '', strtolower($t)))
-            ->filter()
-            ->toArray();
+        $totalScopusPoints = 0;
+        $scopusTitles = [];
 
+        foreach ($scopusPubs as $scop) {
+            $normTitle = preg_replace('/[^a-z0-9]/', '', strtolower($scop->title));
+            if ($normTitle) {
+                $scopusTitles[] = $normTitle;
+            }
+            // Only add Scopus points if this paper is NOT already counted as an approved manual document
+            if (!in_array($normTitle, $manualTitles)) {
+                $totalScopusPoints += (float)($scop->awarded_points ?: 0);
+            }
+        }
+
+        // D. Google Scholar points (publications within KPI period, excluding cross-indexed Scopus & approved manual documents)
         $scholarPoints = 0;
         $scholarPubs = $this->publications()
             ->whereBetween('year', [$kpiYearStart, $kpiYearEnd])
@@ -124,7 +141,7 @@ class User extends Authenticatable
 
         foreach ($scholarPubs as $pub) {
             $normTitle = preg_replace('/[^a-z0-9]/', '', strtolower($pub->title));
-            if (!in_array($normTitle, $scopusTitles)) {
+            if (!in_array($normTitle, $scopusTitles) && !in_array($normTitle, $manualTitles)) {
                 $citations = (int)($pub->citations ?? 0);
                 $scholarPoints += round(0.5 + ($citations > 0 ? 0.5 : 0) + min($citations, 500) * 0.25);
             }

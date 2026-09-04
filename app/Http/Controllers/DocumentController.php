@@ -321,12 +321,150 @@ class DocumentController extends Controller
     public function getUserDocuments($id)
     {
         $cacheKey = "user_documents_{$id}";
-        $fetchData = function () use ($id) {
-            return Document::with('penelitian')
+        $self = $this;
+        $fetchData = function () use ($id, $self) {
+            $kpiPeriodStart = \Carbon\Carbon::parse(\App\Models\SystemSetting::getValue('kpi_period_start', '2026-01-01'));
+            $kpiPeriodEnd   = \Carbon\Carbon::parse(\App\Models\SystemSetting::getValue('kpi_period_end', '2026-12-31'));
+            $kpiPeriodLabel = \App\Models\SystemSetting::getValue('kpi_period_label', '2026');
+
+            // 1. Dokumen manual internal dari tabel documents
+            $manualDocs = Document::with('penelitian')
                 ->where('user_id', $id)
                 ->where('category', '!=', 'Google Scholar')
                 ->orderBy('published_at', 'desc')
-                ->get();
+                ->get()
+                ->map(function ($doc) {
+                    $d = $doc->toArray();
+                    $d['source'] = 'manual';
+                    return $d;
+                })->toArray();
+
+            // Catat judul yang sudah ada di dokumen manual untuk pengecekan duplikasi judul
+            $manualTitles = [];
+            foreach ($manualDocs as $d) {
+                $normT = preg_replace('/[^a-z0-9]/', '', strtolower($d['title'] ?? ''));
+                if ($normT) {
+                    $manualTitles[$normT] = true;
+                }
+            }
+
+            // 2. Publikasi Scopus (Jurnal Internasional)
+            $scopusPubs = ScopusPublication::where('user_id', $id)->get();
+            $scopusDocs = $scopusPubs->map(function ($pub) use ($kpiPeriodStart, $kpiPeriodEnd, $kpiPeriodLabel, $manualTitles) {
+                $publishedAt = $pub->year ? ($pub->year . '-01-01') : null;
+                $isKpi = false;
+                if ($pub->year) {
+                    $dt = \Carbon\Carbon::createFromDate((int)$pub->year, 1, 1);
+                    $isKpi = $dt->between($kpiPeriodStart, $kpiPeriodEnd);
+                }
+                $normT = preg_replace('/[^a-z0-9]/', '', strtolower($pub->title ?? ''));
+                $hasManualDuplicate = $normT && isset($manualTitles[$normT]);
+
+                return [
+                    'id' => 'scopus_' . $pub->id,
+                    'user_id' => $pub->user_id,
+                    'title' => $pub->title,
+                    'category' => 'Jurnal Internasional',
+                    'file_url' => '-',
+                    'published_at' => $publishedAt,
+                    'status' => 'Approved',
+                    'awarded_points' => (float)($pub->awarded_points ?: 0),
+                    'citations' => (int)($pub->citations ?? 0),
+                    'is_kpi_counted' => $isKpi,
+                    'accreditation_period' => $isKpi ? $kpiPeriodLabel : null,
+                    'source' => 'scopus',
+                    'quartile' => $pub->quartile,
+                    'subtype' => $pub->subtype,
+                    'author_role' => $pub->author_role,
+                    'author_order' => $pub->author_order,
+                    'total_authors' => $pub->total_authors,
+                    'is_corresponding' => (bool)$pub->is_corresponding,
+                    'is_corresponding_confirmed' => (bool)$pub->is_corresponding_confirmed,
+                    'is_hyperauthor' => (bool)$pub->is_hyperauthor,
+                    'journal' => $pub->journal,
+                    'doi' => $pub->doi,
+                    'authors' => $pub->authors,
+                    'created_at' => $pub->created_at ? $pub->created_at->toDateTimeString() : ($publishedAt ? $publishedAt . ' 00:00:00' : null),
+                    'has_manual_duplicate' => $hasManualDuplicate,
+                ];
+            })->toArray();
+
+            // Kumpulan judul Scopus untuk cross-indexing Scholar
+            $scopusTitles = [];
+            foreach ($scopusDocs as $s) {
+                $normT = preg_replace('/[^a-z0-9]/', '', strtolower($s['title'] ?? ''));
+                if ($normT) {
+                    $scopusTitles[$normT] = true;
+                }
+            }
+
+            // 3. Publikasi Google Scholar (Jurnal Nasional)
+            $scholarPubs = ScholarPublication::where('user_id', $id)->get();
+            $scholarDocs = $scholarPubs->map(function ($pub) use ($kpiPeriodStart, $kpiPeriodEnd, $kpiPeriodLabel, $manualTitles, $scopusTitles) {
+                $publishedAt = $pub->year ? ($pub->year . '-01-01') : null;
+                $isKpi = false;
+                if ($pub->year) {
+                    $dt = \Carbon\Carbon::createFromDate((int)$pub->year, 1, 1);
+                    $isKpi = $dt->between($kpiPeriodStart, $kpiPeriodEnd);
+                }
+
+                $citations = (int)($pub->citations ?? 0);
+                $awardedPoints = round(0.5 + ($citations > 0 ? 0.5 : 0) + min($citations, 500) * 0.25);
+
+                $role = $pub->author_role;
+                $order = $pub->author_order;
+                $total = $pub->total_authors;
+
+                if (empty($role) || empty($total)) {
+                    $user = $pub->user;
+                    $userName = $user ? $user->name : '';
+                    $parsed = \App\Http\Controllers\ScholarController::parseScholarAuthors($userName, $pub->authors);
+                    $role = $role ?: $parsed['author_role'];
+                    $order = $order ?: $parsed['author_order'];
+                    $total = $total ?: $parsed['total_authors'];
+                }
+
+                $normT = preg_replace('/[^a-z0-9]/', '', strtolower($pub->title ?? ''));
+                $hasManualDuplicate = $normT && isset($manualTitles[$normT]);
+                $isCrossIndexed = $normT && isset($scopusTitles[$normT]);
+
+                return [
+                    'id' => 'scholar_' . $pub->id,
+                    'user_id' => $pub->user_id,
+                    'title' => $pub->title,
+                    'authors' => $pub->authors,
+                    'author_role' => $role,
+                    'author_order' => $order,
+                    'total_authors' => $total,
+                    'journal' => $pub->journal,
+                    'category' => 'Jurnal Nasional',
+                    'file_url' => '-',
+                    'published_at' => $publishedAt,
+                    'status' => 'Approved',
+                    'awarded_points' => (float)$awardedPoints,
+                    'citations' => $citations,
+                    'is_kpi_counted' => $isKpi,
+                    'accreditation_period' => $isKpi ? $kpiPeriodLabel : null,
+                    'source' => 'scholar',
+                    'is_corresponding' => (bool)$pub->is_corresponding,
+                    'is_corresponding_confirmed' => (bool)$pub->is_corresponding_confirmed,
+                    'is_sinta_confirmed' => false,
+                    'sinta_rank' => 'Non-SINTA',
+                    'is_cross_indexed' => $isCrossIndexed,
+                    'has_manual_duplicate' => $hasManualDuplicate,
+                    'created_at' => $pub->created_at ? $pub->created_at->toDateTimeString() : ($publishedAt ? $publishedAt . ' 00:00:00' : null),
+                ];
+            })->toArray();
+
+            // Gabungkan semua dokumen dan urutkan berdasarkan waktu publikasi desc
+            $merged = array_merge($manualDocs, $scopusDocs, $scholarDocs);
+            usort($merged, function ($a, $b) {
+                $timeA = !empty($a['published_at']) ? strtotime($a['published_at']) : (!empty($a['created_at']) ? strtotime($a['created_at']) : 0);
+                $timeB = !empty($b['published_at']) ? strtotime($b['published_at']) : (!empty($b['created_at']) ? strtotime($b['created_at']) : 0);
+                return $timeB <=> $timeA;
+            });
+
+            return $merged;
         };
 
         if (\Illuminate\Support\Facades\Cache::supportsTags()) {
@@ -775,7 +913,8 @@ class DocumentController extends Controller
             'is_corresponding' => 'required|boolean'
         ]);
 
-        $pub = \App\Models\ScholarPublication::findOrFail($id);
+        $cleanId = (int)str_replace('scholar_', '', $id);
+        $pub = \App\Models\ScholarPublication::findOrFail($cleanId);
         $user = $pub->user;
 
         \Illuminate\Support\Facades\DB::transaction(function () use ($pub, $user, $request) {
@@ -797,6 +936,78 @@ class DocumentController extends Controller
             'success' => true,
             'message' => 'Corresponding status updated successfully',
             'publication' => $pub
+        ]);
+    }
+
+    public function bulkCorrespondence(Request $request)
+    {
+        $selections = $request->input('selections', []);
+        if (empty($selections) || !is_array($selections)) {
+            return response()->json(['success' => false, 'message' => 'No selections provided'], 400);
+        }
+
+        $userIdsToRecalculate = [];
+
+        \Illuminate\Support\Facades\DB::transaction(function () use ($selections, &$userIdsToRecalculate) {
+            foreach ($selections as $idStr => $val) {
+                if (str_starts_with((string)$idStr, 'scopus_')) {
+                    $rawId = (int)str_replace('scopus_', '', $idStr);
+                    $pub = ScopusPublication::find($rawId);
+                    if ($pub) {
+                        $pub->is_corresponding = (bool)$val;
+                        $pub->is_corresponding_confirmed = true;
+                        $pub->awarded_points = round($pub->calculatePoints());
+                        $pub->save();
+                        $userIdsToRecalculate[$pub->user_id] = true;
+                    }
+                } elseif (str_starts_with((string)$idStr, 'scholar_')) {
+                    $rawId = (int)str_replace('scholar_', '', $idStr);
+                    $pub = ScholarPublication::find($rawId);
+                    if ($pub) {
+                        if (is_bool($val)) {
+                            $pub->is_corresponding = (bool)$val;
+                            $pub->is_corresponding_confirmed = true;
+                        }
+                        $pub->save();
+                        $userIdsToRecalculate[$pub->user_id] = true;
+                    }
+                } else {
+                    $rawId = (int)$idStr;
+                    $doc = Document::find($rawId);
+                    if ($doc) {
+                        if (is_string($val)) {
+                            $doc->sinta_rank = $val;
+                            $doc->is_sinta_confirmed = true;
+                        } else {
+                            $doc->is_corresponding = (bool)$val;
+                            $doc->is_corresponding_confirmed = true;
+                        }
+                        if ($doc->category === 'Jurnal Internasional' || $doc->category === 'Jurnal Nasional') {
+                            $doc->awarded_points = $doc->calculatePoints();
+                        }
+                        $doc->save();
+                        $userIdsToRecalculate[$doc->user_id] = true;
+                    }
+                }
+            }
+
+            foreach (array_keys($userIdsToRecalculate) as $uid) {
+                $u = User::find($uid);
+                if ($u) {
+                    $u->recalculateKpiPoints();
+                }
+            }
+        });
+
+        if (\Illuminate\Support\Facades\Cache::supportsTags()) {
+            \Illuminate\Support\Facades\Cache::tags(['documents', 'stats', 'leaderboard', 'lecturers'])->flush();
+        } else {
+            \Illuminate\Support\Facades\Cache::flush();
+        }
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Konfirmasi berhasil disimpan',
         ]);
     }
 

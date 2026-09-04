@@ -724,7 +724,8 @@ class ScopusController extends Controller
             'is_corresponding' => 'required|boolean'
         ]);
 
-        $pub = \App\Models\ScopusPublication::findOrFail($id);
+        $cleanId = (int)str_replace('scopus_', '', $id);
+        $pub = \App\Models\ScopusPublication::findOrFail($cleanId);
         $user = $pub->user;
 
         DB::transaction(function () use ($pub, $user, $request) {
