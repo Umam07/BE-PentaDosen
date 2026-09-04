@@ -26,8 +26,8 @@ class PenelitianController extends Controller
             ],
             'dana_disetujui' => 'required|numeric',
             'program' => 'required|in:hibah dikti,hibah internal,hibah luar negeri',
-            'skema' => 'required|in:kompetisi,pembinaan',
-            'fokus' => 'required|in:kesehatan,ekonomi',
+            'skema' => 'required|string|max:255',
+            'fokus' => 'required|string|max:255',
             'tahun' => 'required|date',
             'file' => 'nullable|file|mimes:pdf|max:10240',
         ], [
@@ -369,8 +369,8 @@ class PenelitianController extends Controller
             ],
             'dana_disetujui' => 'required|numeric',
             'program' => 'required|in:hibah dikti,hibah internal,hibah luar negeri',
-            'skema' => 'required|in:kompetisi,pembinaan,lainnya',
-            'fokus' => 'required|in:kesehatan,ekonomi,teknologi,sosial,lainnya',
+            'skema' => 'required|string|max:255',
+            'fokus' => 'required|string|max:255',
             'tahun' => 'required|date',
             'file' => 'nullable|file|mimes:pdf|max:10240',
         ], [

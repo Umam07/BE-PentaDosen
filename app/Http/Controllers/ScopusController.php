@@ -124,104 +124,8 @@ class ScopusController extends Controller
                     $year = substr($entry['prism:coverDate'], 0, 4);
                 }
 
-                // 1. Detect Journal Quartile (SJR lookup with normalized ISSN)
-                $issn  = $entry['prism:issn']  ?? null;
-                $eIssn = $entry['prism:eIssn'] ?? null;
-                $quartile = null;
-
-                // Normalize ISSNs: try both with-dash (xxxx-xxxx) and without-dash (xxxxxxxx) forms
-                $issnVariants = [];
-                foreach ([$issn, $eIssn] as $raw) {
-                    if (!$raw) continue;
-                    $clean = preg_replace('/[^0-9Xx]/', '', $raw);
-                    $issnVariants[] = strtoupper($clean);                          // no dash
-                    if (strlen($clean) === 8) {
-                        $issnVariants[] = substr($clean, 0, 4) . '-' . substr($clean, 4); // with dash
-                    }
-                }
-                $issnVariants = array_unique(array_filter($issnVariants));
-
-                if (!empty($issnVariants)) {
-                    $sjr = DB::table('sjr_journals')
-                        ->whereIn(DB::raw('UPPER(issn)'), $issnVariants)
-                        ->first();
-                    if ($sjr) {
-                        $quartile = $sjr->quartile;
-                    }
-                }
-
-                // Fallback to Scopus Sources API (CiteScore) if SJR not found locally
-                if (!$quartile && !empty($issnVariants)) {
-                    $searchIssn = preg_replace('/-/', '', $issn ?: $eIssn); // use no-dash form
-                    try {
-                        $sourceRes = Http::withHeaders([
-                            'X-ELS-APIKey' => $apiKey,
-                            'Accept' => 'application/json'
-                        ])->timeout(8)->get("https://api.elsevier.com/content/serial/title", [
-                            'issn'  => $searchIssn,
-                            'view'  => 'CITESCORE',
-                            'field' => 'citeScoreYearInfoList',
-                        ]);
-                        if ($sourceRes->successful()) {
-                            $sourceData = $sourceRes->json();
-                            $entryMetadata = $sourceData['serial-metadata-response']['entry'][0] ?? null;
-                            if ($entryMetadata && isset($entryMetadata['citeScoreYearInfoList']['citeScoreYearInfo'])) {
-                                $yearInfos = $entryMetadata['citeScoreYearInfoList']['citeScoreYearInfo'];
-                                
-                                if (isset($yearInfos['citeScoreInformationList'])) {
-                                    $yearInfos = [$yearInfos];
-                                }
-
-                                $maxPercentile = 0;
-                                foreach ($yearInfos as $yearInfo) {
-                                    if (isset($yearInfo['citeScoreInformationList'])) {
-                                        $infoListWrapper = $yearInfo['citeScoreInformationList'];
-                                        if (isset($infoListWrapper['citeScoreInfo'])) {
-                                            $infoListWrapper = [$infoListWrapper];
-                                        }
-                                        
-                                        foreach ($infoListWrapper as $wrapper) {
-                                            $citeScoreInfo = $wrapper['citeScoreInfo'] ?? [];
-                                            if (isset($citeScoreInfo['citeScoreSubjectRank'])) {
-                                                $citeScoreInfo = [$citeScoreInfo];
-                                            }
-                                            
-                                            foreach ($citeScoreInfo as $info) {
-                                                $ranks = $info['citeScoreSubjectRank'] ?? [];
-                                                if (isset($ranks['percentile'])) {
-                                                    $ranks = [$ranks];
-                                                }
-                                                
-                                                foreach ($ranks as $r) {
-                                                    $percentile = (int)($r['percentile'] ?? 0);
-                                                    if ($percentile > $maxPercentile) {
-                                                        $maxPercentile = $percentile;
-                                                    }
-                                                }
-                                            }
-                                        }
-                                    }
-                                }
-
-                                if ($maxPercentile >= 75) {
-                                    $quartile = 'Q1';
-                                } elseif ($maxPercentile >= 50) {
-                                    $quartile = 'Q2';
-                                } elseif ($maxPercentile >= 25) {
-                                    $quartile = 'Q3';
-                                } elseif ($maxPercentile > 0) {
-                                    $quartile = 'Q4';
-                                }
-                            }
-                        }
-                    } catch (\Exception $e) {
-                        // Silently ignore API lookup failures
-                    }
-                }
-
-                if (!$quartile) {
-                    $quartile = 'None';
-                }
+                // 1. Detect Journal Quartile (SJR lookup or Scopus CiteScore API fallback)
+                $resolvedQuartile = $this->detectQuartile($entry, $apiKey);
 
                 // 2. Detect Author Role (Single, First, Member Author, Hyperauthor)
                 //    Primary: use Scopus author list (authid matching)
@@ -360,8 +264,6 @@ class ScopusController extends Controller
                 }
 
                 // 5. Calculate points dynamically using Model helper
-                $resolvedQuartile = ($quartile && $quartile !== 'None') ? $quartile : null;
-
                 $tempPub = new \App\Models\ScopusPublication([
                     'author_role' => $authorRole,
                     'total_authors' => $totalAuthors,
@@ -898,5 +800,107 @@ class ScopusController extends Controller
         
         // Also ensure word counts don't differ by too much (e.g. at most 1 extra word)
         return abs(count($words1) - count($words2)) <= 1;
+    }
+
+    /**
+     * Detect Journal Quartile from SJR database or Scopus Sources API (CiteScore)
+     */
+    private function detectQuartile(array $entry, string $apiKey): ?string
+    {
+        $issn  = $entry['prism:issn']  ?? null;
+        $eIssn = $entry['prism:eIssn'] ?? null;
+        $quartile = null;
+
+        // Normalize ISSNs: try both with-dash (xxxx-xxxx) and without-dash (xxxxxxxx) forms
+        $issnVariants = [];
+        foreach ([$issn, $eIssn] as $raw) {
+            if (!$raw) continue;
+            $clean = preg_replace('/[^0-9Xx]/', '', $raw);
+            $issnVariants[] = strtoupper($clean);                          // no dash
+            if (strlen($clean) === 8) {
+                $issnVariants[] = substr($clean, 0, 4) . '-' . substr($clean, 4); // with dash
+            }
+        }
+        $issnVariants = array_unique(array_filter($issnVariants));
+
+        if (!empty($issnVariants)) {
+            $sjr = DB::table('sjr_journals')
+                ->whereIn(DB::raw('UPPER(issn)'), $issnVariants)
+                ->first();
+            if ($sjr) {
+                $quartile = $sjr->quartile;
+            }
+        }
+
+        // Fallback to Scopus Sources API (CiteScore) if SJR not found locally
+        if (!$quartile && !empty($issnVariants)) {
+            $searchIssn = preg_replace('/-/', '', $issn ?: $eIssn); // use no-dash form
+            try {
+                $sourceRes = Http::withHeaders([
+                    'X-ELS-APIKey' => $apiKey,
+                    'Accept' => 'application/json'
+                ])->timeout(8)->get("https://api.elsevier.com/content/serial/title", [
+                    'issn'  => $searchIssn,
+                    'view'  => 'CITESCORE',
+                    'field' => 'citeScoreYearInfoList',
+                ]);
+                if ($sourceRes->successful()) {
+                    $sourceData = $sourceRes->json();
+                    $entryMetadata = $sourceData['serial-metadata-response']['entry'][0] ?? null;
+                    if ($entryMetadata && isset($entryMetadata['citeScoreYearInfoList']['citeScoreYearInfo'])) {
+                        $yearInfos = $entryMetadata['citeScoreYearInfoList']['citeScoreYearInfo'];
+                        
+                        if (isset($yearInfos['citeScoreInformationList'])) {
+                            $yearInfos = [$yearInfos];
+                        }
+
+                        $maxPercentile = 0;
+                        foreach ($yearInfos as $yearInfo) {
+                            if (isset($yearInfo['citeScoreInformationList'])) {
+                                $infoListWrapper = $yearInfo['citeScoreInformationList'];
+                                if (isset($infoListWrapper['citeScoreInfo'])) {
+                                    $infoListWrapper = [$infoListWrapper];
+                                }
+                                
+                                foreach ($infoListWrapper as $wrapper) {
+                                    $citeScoreInfo = $wrapper['citeScoreInfo'] ?? [];
+                                    if (isset($citeScoreInfo['citeScoreSubjectRank'])) {
+                                        $citeScoreInfo = [$citeScoreInfo];
+                                    }
+                                    
+                                    foreach ($citeScoreInfo as $info) {
+                                        $ranks = $info['citeScoreSubjectRank'] ?? [];
+                                        if (isset($ranks['percentile'])) {
+                                            $ranks = [$ranks];
+                                        }
+                                        
+                                        foreach ($ranks as $r) {
+                                            $percentile = (int)($r['percentile'] ?? 0);
+                                            if ($percentile > $maxPercentile) {
+                                                $maxPercentile = $percentile;
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+
+                        if ($maxPercentile >= 75) {
+                            $quartile = 'Q1';
+                        } elseif ($maxPercentile >= 50) {
+                            $quartile = 'Q2';
+                        } elseif ($maxPercentile >= 25) {
+                            $quartile = 'Q3';
+                        } elseif ($maxPercentile > 0) {
+                            $quartile = 'Q4';
+                        }
+                    }
+                }
+            } catch (\Exception $e) {
+                // Silently ignore API lookup failures
+            }
+        }
+
+        return ($quartile && $quartile !== 'None') ? $quartile : null;
     }
 }
