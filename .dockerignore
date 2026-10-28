@@ -1,0 +1,36 @@
+# Git & IDE
+.git
+.github
+.gitignore
+.gitattributes
+.vscode
+.idea
+
+# Environment files & secrets
+.env
+.env.*
+!.env.example
+
+# Dependencies (installed fresh inside Docker)
+vendor
+node_modules
+
+# Tests and temporary files
+tests
+.phpunit.cache
+phpunit.xml
+
+# Storage runtime files
+storage/logs/*
+storage/framework/cache/*
+storage/framework/sessions/*
+storage/framework/views/*
+!storage/framework/cache/.gitignore
+!storage/framework/sessions/.gitignore
+!storage/framework/views/.gitignore
+!storage/logs/.gitignore
+
+# Local dev configs
+docker-compose*.yml
+*.log
+*.md
