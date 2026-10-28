@@ -1,10 +1,10 @@
 # ==============================================================================
-# Dockerfile for Laravel 12 on Render (PentaDosen Backend)
+# Dockerfile for Laravel 12 (PentaDosen Backend)
 # ==============================================================================
-FROM php:8.3-fpm-bookworm
+FROM php:8.4-fpm-bookworm
 
 LABEL maintainer="PentaDosen Team"
-LABEL description="Production Docker image for PentaDosen Laravel 12 Backend on Render"
+LABEL description="Production Docker image for PentaDosen Laravel 12 Backend"
 
 ENV DEBIAN_FRONTEND=noninteractive
 ENV COMPOSER_ALLOW_SUPERUSER=1
@@ -25,7 +25,9 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libxml2-dev \
     gettext-base \
     ca-certificates \
-    && rm -rf /var/lib/apt/lists/*
+    && rm -rf /var/lib/apt/lists/* \
+    && mkdir -p /app \
+    && ln -sf /etc/ssl/certs/ca-certificates.crt /app/cacert.pem
 
 # 2. Configure and install required PHP extensions
 RUN docker-php-ext-configure gd --with-freetype --with-jpeg --with-webp \
@@ -74,8 +76,8 @@ RUN chmod +x /usr/local/bin/entrypoint.sh \
 # Remove default site config to prevent conflicts
 RUN rm -f /etc/nginx/sites-enabled/default /etc/nginx/conf.d/default.conf
 
-# Render binds to dynamic port ($PORT, defaults to 10000)
-EXPOSE 10000
+# Dynamic port binding ($PORT, defaults to 8080/10000)
+EXPOSE 8080 10000
 
 # Start container via entrypoint
 ENTRYPOINT ["/usr/local/bin/entrypoint.sh"]

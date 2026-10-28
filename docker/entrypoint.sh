@@ -1,8 +1,8 @@
 #!/bin/sh
 set -e
 
-# 1. Resolve dynamic port (Render injects $PORT, defaults to 10000)
-PORT="${PORT:-10000}"
+# 1. Resolve dynamic port (Railway/Render injects $PORT, defaults to 8080)
+PORT="${PORT:-8080}"
 export PORT
 
 echo "==> Configuring Nginx port to $PORT..."
