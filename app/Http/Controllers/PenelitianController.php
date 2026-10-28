@@ -15,13 +15,26 @@ class PenelitianController extends Controller
 {
     public function store(Request $request)
     {
+        $authUser = $request->user();
+        if (!$authUser) {
+            return response()->json(['error' => 'Unauthenticated.'], 401);
+        }
+
+        // Authorization: Non-admin can only submit for themselves and cannot self-approve
+        if (!in_array($authUser->role, ['admin penelitian', 'admin fakultas'])) {
+            $effectiveUserId = $authUser->id;
+            $status = 'Pending';
+        } else {
+            $effectiveUserId = $request->filled('user_id') ? (int)$request->user_id : $authUser->id;
+            $status = in_array($request->status, ['Approved', 'Pending', 'Rejected']) ? $request->status : 'Pending';
+        }
+
         $request->validate([
-            'user_id' => 'required|exists:users,id',
             'judul_penelitian' => [
                 'required',
                 'string',
-                Rule::unique('penelitian')->where(function ($query) use ($request) {
-                    return $query->where('user_id', $request->user_id);
+                Rule::unique('penelitian')->where(function ($query) use ($effectiveUserId) {
+                    return $query->where('user_id', $effectiveUserId);
                 })
             ],
             'dana_disetujui' => 'required|numeric',
@@ -41,7 +54,6 @@ class PenelitianController extends Controller
         }
 
         // Calculate points if status is Approved (Admin input)
-        $status = $request->status ?: 'Pending';
         $awardedPoints = 0;
 
         if ($status === 'Approved') {
@@ -55,7 +67,7 @@ class PenelitianController extends Controller
         }
 
         $penelitian = Penelitian::create([
-            'user_id' => $request->user_id,
+            'user_id' => $effectiveUserId,
             'judul_penelitian' => $request->judul_penelitian,
             'dana_disetujui' => $request->dana_disetujui,
             'program' => $request->program,
@@ -69,12 +81,12 @@ class PenelitianController extends Controller
 
         \App\Models\DocumentHistory::create([
             'penelitian_id' => $penelitian->id,
-            'user_id' => $request->user_id,
+            'user_id' => $effectiveUserId,
             'action' => 'Dokumen Diunggah',
         ]);
 
         if ($status === 'Approved' && $awardedPoints > 0) {
-            $user = User::find($request->user_id);
+            $user = User::find($effectiveUserId);
             if ($user) {
                 $user->recalculateKpiPoints();
             }
@@ -87,12 +99,12 @@ class PenelitianController extends Controller
             Cache::flush();
         }
 
-        \App\Models\ActivityLog::log($request->user_id, 'Submit Research', 'User mengajukan hasil penelitian: ' . $request->judul_penelitian);
+        \App\Models\ActivityLog::log($effectiveUserId, 'Submit Research', 'User mengajukan hasil penelitian: ' . $request->judul_penelitian);
 
         // === NOTIFICATIONS ===
         // Notify Admin Fakultas about new research submission
         if ($status === 'Pending') {
-            $dosen = User::find($request->user_id);
+            $dosen = User::find($effectiveUserId);
             $dosenName = $dosen ? $dosen->name : 'Dosen';
             $dosenFakultas = $dosen ? $dosen->fakultas : null;
             $dosenProdi = $dosen ? $dosen->program_studi : null;
@@ -125,12 +137,20 @@ class PenelitianController extends Controller
 
     public function index(Request $request)
     {
-        $userId = $request->query('user_id');
-        $role = $request->query('role');
+        $authUser = $request->user();
+        $role = $authUser ? $authUser->role : $request->query('role');
+        $userId = $authUser ? $authUser->id : $request->query('user_id');
         $all = $request->query('all');
+
+        // Non-admin can ONLY view their own research
+        if ($authUser && !in_array($authUser->role, ['admin penelitian', 'admin fakultas'])) {
+            $role = 'dosen';
+            $userId = $authUser->id;
+        }
+
         $cacheKey = "penelitian_index_{$userId}_{$role}_{$all}";
 
-        $fetchData = function () use ($userId, $role, $all) {
+        $fetchData = function () use ($userId, $role, $all, $authUser) {
             if ($role === 'admin penelitian') {
                 $query = Penelitian::with('user');
                 if ($all !== 'true') {
@@ -138,7 +158,7 @@ class PenelitianController extends Controller
                 }
                 return $query->orderBy('created_at', 'desc')->get();
             } elseif ($role === 'admin fakultas') {
-                  $admin = User::find($userId);
+                  $admin = $authUser ?: User::find($userId);
                   if ($admin && $admin->fakultas) {
                       $query = Penelitian::whereHas('user', function($q) use ($admin) {
                           $q->where('fakultas', $admin->fakultas);
@@ -182,12 +202,23 @@ class PenelitianController extends Controller
     {
         $request->validate([
             'status' => 'required|in:Approved,Rejected',
-            'role' => 'nullable|string',
-            'catatan' => 'nullable|string'
+            'catatan' => 'nullable|string|max:1000'
         ]);
 
+        $authUser = $request->user();
+        if (!$authUser || !in_array($authUser->role, ['admin penelitian', 'admin fakultas'])) {
+            return response()->json(['success' => false, 'message' => 'Unauthorized. Admin privilege required.'], 403);
+        }
+
         $penelitian = Penelitian::findOrFail($id);
-        $role = $request->role;
+        $role = $authUser->role;
+        $adminId = $authUser->id;
+
+        if ($role === 'admin fakultas') {
+            if ($penelitian->user && $penelitian->user->fakultas && $authUser->fakultas && $penelitian->user->fakultas !== $authUser->fakultas) {
+                return response()->json(['success' => false, 'message' => 'Akses ditolak: Anda hanya dapat memverifikasi penelitian dari fakultas Anda.'], 403);
+            }
+        }
         
         if ($request->status === 'Approved') {
             if ($role === 'admin fakultas') {
@@ -199,7 +230,7 @@ class PenelitianController extends Controller
 
                 \App\Models\DocumentHistory::create([
                     'penelitian_id' => $penelitian->id,
-                    'user_id' => $request->admin_id ?? $penelitian->user_id,
+                    'user_id' => $adminId,
                     'action' => 'Diverifikasi Fakultas',
                     'notes' => null
                 ]);
@@ -233,7 +264,7 @@ class PenelitianController extends Controller
 
                 \App\Models\DocumentHistory::create([
                     'penelitian_id' => $penelitian->id,
-                    'user_id' => $request->admin_id ?? $penelitian->user_id,
+                    'user_id' => $adminId,
                     'action' => 'Disetujui Admin Penelitian',
                     'notes' => null
                 ]);
@@ -246,7 +277,7 @@ class PenelitianController extends Controller
 
             \App\Models\DocumentHistory::create([
                 'penelitian_id' => $penelitian->id,
-                'user_id' => $request->admin_id ?? $penelitian->user_id,
+                'user_id' => $adminId,
                 'action' => 'Ditolak ' . ($role === 'admin fakultas' ? 'Fakultas' : 'Penelitian'),
                 'notes' => $request->catatan ?? null
             ]);
@@ -259,8 +290,8 @@ class PenelitianController extends Controller
             Cache::flush();
         }
 
-        if ($request->admin_id) {
-            \App\Models\ActivityLog::log($request->admin_id, 'Verifikasi Penelitian', "Mengubah status penelitian '{$penelitian->judul_penelitian}' menjadi {$request->status}");
+        if ($adminId) {
+            \App\Models\ActivityLog::log($adminId, 'Verifikasi Penelitian', "Mengubah status penelitian '{$penelitian->judul_penelitian}' menjadi {$request->status}");
         }
 
         // === NOTIFICATIONS ===
@@ -320,7 +351,16 @@ class PenelitianController extends Controller
             'file' => 'required|file|mimes:pdf|max:10240',
         ]);
 
+        $authUser = $request->user();
+        if (!$authUser) {
+            return response()->json(['error' => 'Unauthenticated.'], 401);
+        }
+
         $penelitian = Penelitian::findOrFail($id);
+
+        if (!in_array($authUser->role, ['admin penelitian', 'admin fakultas']) && $penelitian->user_id !== $authUser->id) {
+            return response()->json(['success' => false, 'message' => 'Anda tidak memiliki hak untuk mengunggah file untuk penelitian ini.'], 403);
+        }
 
         $path = $request->file('file')->store('penelitian', 'public');
         $fileUrl = Storage::url($path);
@@ -330,7 +370,7 @@ class PenelitianController extends Controller
 
         \App\Models\DocumentHistory::create([
             'penelitian_id' => $penelitian->id,
-            'user_id' => $penelitian->user_id,
+            'user_id' => $authUser->id,
             'action' => 'Dokumen Diperbarui',
         ]);
 
@@ -349,7 +389,16 @@ class PenelitianController extends Controller
 
     public function update(Request $request, $id)
     {
+        $authUser = $request->user();
+        if (!$authUser) {
+            return response()->json(['error' => 'Unauthenticated.'], 401);
+        }
+
         $penelitian = Penelitian::findOrFail($id);
+
+        if (!in_array($authUser->role, ['admin penelitian', 'admin fakultas']) && $penelitian->user_id !== $authUser->id) {
+            return response()->json(['success' => false, 'message' => 'Anda tidak memiliki hak untuk mengubah penelitian ini.'], 403);
+        }
 
         // Lock: cannot edit if already verified or approved
         if (in_array($penelitian->status, ['Verified by Fakultas', 'Approved'])) {
@@ -444,9 +493,18 @@ class PenelitianController extends Controller
         ]);
     }
 
-    public function destroy($id)
+    public function destroy(Request $request, $id)
     {
+        $authUser = $request->user();
+        if (!$authUser) {
+            return response()->json(['error' => 'Unauthenticated.'], 401);
+        }
+
         $penelitian = Penelitian::findOrFail($id);
+
+        if (!in_array($authUser->role, ['admin penelitian', 'admin fakultas']) && $penelitian->user_id !== $authUser->id) {
+            return response()->json(['success' => false, 'message' => 'Anda tidak memiliki hak untuk menghapus penelitian ini.'], 403);
+        }
 
         // Lock: cannot delete if already verified or approved
         if (in_array($penelitian->status, ['Verified by Fakultas', 'Approved'])) {

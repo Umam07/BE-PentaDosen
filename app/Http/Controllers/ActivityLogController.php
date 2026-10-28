@@ -10,10 +10,21 @@ class ActivityLogController extends Controller
 {
     public function index(Request $request)
     {
+        $authUser = $request->user();
+        if ($authUser && !in_array($authUser->role, ['admin penelitian', 'admin fakultas'])) {
+            return response()->json(['error' => 'Akses ditolak: hanya Admin yang dapat melihat riwayat aktivitas.'], 403);
+        }
+
         $perPage = $request->query('per_page', 10);
         $actionFilter = $request->query('action');
         
         $query = ActivityLog::with('user');
+
+        if ($authUser && $authUser->role === 'admin fakultas' && $authUser->fakultas) {
+            $query->whereHas('user', function ($u) use ($authUser) {
+                $u->where('fakultas', $authUser->fakultas);
+            });
+        }
 
         if ($actionFilter) {
             if ($actionFilter === 'create') {
@@ -38,13 +49,16 @@ class ActivityLogController extends Controller
 
     public function store(Request $request)
     {
+        $authUser = $request->user();
+        $targetUserId = $authUser ? $authUser->id : $request->user_id;
+
         $request->validate([
-            'user_id' => 'required',
+            'user_id' => $authUser ? 'nullable' : 'required',
             'action' => 'required',
             'description' => 'nullable'
         ]);
 
-        ActivityLog::log($request->user_id, $request->action, $request->description);
+        ActivityLog::log($targetUserId, $request->action, $request->description);
 
         return response()->json(['success' => true]);
     }

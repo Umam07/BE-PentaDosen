@@ -30,6 +30,11 @@ class CmsController extends Controller
 
     public function updateSettings(Request $request)
     {
+        $authUser = $request->user();
+        if (!$authUser || $authUser->role !== 'admin penelitian') {
+            return response()->json(['error' => 'Akses ditolak: hanya Admin Penelitian yang dapat mengubah pengaturan.'], 403);
+        }
+
         $request->validate([
             'kpi_period_start' => 'required|date',
             'kpi_period_end' => 'required|date|after_or_equal:kpi_period_start',
@@ -54,6 +59,11 @@ class CmsController extends Controller
 
     public function updateWeights(Request $request)
     {
+        $authUser = $request->user();
+        if (!$authUser || $authUser->role !== 'admin penelitian') {
+            return response()->json(['error' => 'Akses ditolak: hanya Admin Penelitian yang dapat mengubah bobot poin.'], 403);
+        }
+
         $request->validate([
             'weights' => 'required|array',
             'weights.*.category' => 'required|string',
@@ -72,6 +82,11 @@ class CmsController extends Controller
 
     public function storeWeight(Request $request)
     {
+        $authUser = $request->user();
+        if (!$authUser || $authUser->role !== 'admin penelitian') {
+            return response()->json(['error' => 'Akses ditolak: hanya Admin Penelitian yang dapat menambah kategori bobot.'], 403);
+        }
+
         $request->validate([
             'category' => 'required|string|unique:point_weights,category',
             'weight_value' => 'required|integer|min:0',
@@ -85,8 +100,13 @@ class CmsController extends Controller
         return response()->json(['success' => true, 'weight' => $weight, 'message' => 'Kategori baru berhasil ditambahkan.']);
     }
 
-    public function destroyWeight($category)
+    public function destroyWeight(Request $request, $category)
     {
+        $authUser = $request->user();
+        if (!$authUser || $authUser->role !== 'admin penelitian') {
+            return response()->json(['error' => 'Akses ditolak: hanya Admin Penelitian yang dapat menghapus kategori bobot.'], 403);
+        }
+
         $weight = PointWeight::where('category', $category)->first();
         if ($weight) {
             $weight->delete();
@@ -120,12 +140,16 @@ class CmsController extends Controller
 
     public function storeAnnouncement(Request $request)
     {
+        $authUser = $request->user();
+        if (!$authUser || !in_array($authUser->role, ['admin penelitian', 'admin fakultas'])) {
+            return response()->json(['error' => 'Akses ditolak: hanya Admin yang dapat menerbitkan pengumuman.'], 403);
+        }
+
         $request->validate([
             'title' => 'required|string|max:255',
             'content' => 'required|string',
             'is_active' => 'boolean',
             'expires_at' => 'nullable|date',
-            'created_by' => 'nullable|exists:users,id',
         ]);
 
         $announcement = Announcement::create([
@@ -133,7 +157,7 @@ class CmsController extends Controller
             'content' => $request->input('content'),
             'is_active' => $request->is_active ?? true,
             'expires_at' => $request->expires_at,
-            'created_by' => $request->created_by,
+            'created_by' => $authUser->id,
         ]);
 
         if ($announcement->is_active) {
@@ -154,6 +178,11 @@ class CmsController extends Controller
 
     public function updateAnnouncement(Request $request, $id)
     {
+        $authUser = $request->user();
+        if (!$authUser || !in_array($authUser->role, ['admin penelitian', 'admin fakultas'])) {
+            return response()->json(['error' => 'Akses ditolak: hanya Admin yang dapat memperbarui pengumuman.'], 403);
+        }
+
         $announcement = Announcement::findOrFail($id);
 
         $request->validate([
@@ -168,8 +197,13 @@ class CmsController extends Controller
         return response()->json(['success' => true, 'announcement' => $announcement, 'message' => 'Pengumuman berhasil diperbarui.']);
     }
 
-    public function destroyAnnouncement($id)
+    public function destroyAnnouncement(Request $request, $id)
     {
+        $authUser = $request->user();
+        if (!$authUser || !in_array($authUser->role, ['admin penelitian', 'admin fakultas'])) {
+            return response()->json(['error' => 'Akses ditolak: hanya Admin yang dapat menghapus pengumuman.'], 403);
+        }
+
         $announcement = Announcement::findOrFail($id);
         $announcement->delete();
 
@@ -187,6 +221,11 @@ class CmsController extends Controller
 
     public function storeFaq(Request $request)
     {
+        $authUser = $request->user();
+        if (!$authUser || !in_array($authUser->role, ['admin penelitian', 'admin fakultas'])) {
+            return response()->json(['error' => 'Akses ditolak: hanya Admin yang dapat menambah FAQ.'], 403);
+        }
+
         $request->validate([
             'question' => 'required|string',
             'answer' => 'required|string',
@@ -214,6 +253,11 @@ class CmsController extends Controller
 
     public function updateFaq(Request $request, $id)
     {
+        $authUser = $request->user();
+        if (!$authUser || !in_array($authUser->role, ['admin penelitian', 'admin fakultas'])) {
+            return response()->json(['error' => 'Akses ditolak: hanya Admin yang dapat memperbarui FAQ.'], 403);
+        }
+
         $faq = Faq::findOrFail($id);
 
         $request->validate([
@@ -253,8 +297,13 @@ class CmsController extends Controller
         return response()->json(['success' => true, 'faq' => $faq, 'message' => 'FAQ berhasil diperbarui.']);
     }
 
-    public function destroyFaq($id)
+    public function destroyFaq(Request $request, $id)
     {
+        $authUser = $request->user();
+        if (!$authUser || !in_array($authUser->role, ['admin penelitian', 'admin fakultas'])) {
+            return response()->json(['error' => 'Akses ditolak: hanya Admin yang dapat menghapus FAQ.'], 403);
+        }
+
         $faq = Faq::findOrFail($id);
 
         // Delete associated file if exists
@@ -279,6 +328,11 @@ class CmsController extends Controller
 
     public function uploadTemplate(Request $request)
     {
+        $authUser = $request->user();
+        if (!$authUser || $authUser->role !== 'admin penelitian') {
+            return response()->json(['error' => 'Akses ditolak: hanya Admin Penelitian yang dapat mengunggah template.'], 403);
+        }
+
         $request->validate([
             'type' => 'required|string|in:research,publication,hki,buku',
             'file' => 'required|file|mimes:xlsx,xls|max:5120', // Max 5MB
@@ -311,6 +365,11 @@ class CmsController extends Controller
     // ==========================================
     public function getUsers(Request $request)
     {
+        $authUser = $request->user();
+        if (!$authUser || !in_array($authUser->role, ['admin penelitian', 'admin fakultas'])) {
+            return response()->json(['error' => 'Akses ditolak: hanya Admin yang dapat melihat daftar pengguna.'], 403);
+        }
+
         $search = $request->query('search');
         $roleFilter = $request->query('role');
         $perPage = $request->query('per_page', 20);
@@ -325,6 +384,9 @@ class CmsController extends Controller
             ->when($roleFilter, function ($query) use ($roleFilter) {
                 $query->where('role', $roleFilter);
             })
+            ->when($authUser->role === 'admin fakultas' && $authUser->fakultas, function ($query) use ($authUser) {
+                $query->where('fakultas', $authUser->fakultas);
+            })
             ->orderBy('name', 'asc')
             ->paginate($perPage);
 
@@ -333,6 +395,11 @@ class CmsController extends Controller
 
     public function assignRole(Request $request, $id)
     {
+        $authUser = $request->user();
+        if (!$authUser || $authUser->role !== 'admin penelitian') {
+            return response()->json(['error' => 'Akses ditolak: hanya Admin Penelitian yang berwenang mengubah hak akses role.'], 403);
+        }
+
         $user = User::findOrFail($id);
 
         $request->validate([

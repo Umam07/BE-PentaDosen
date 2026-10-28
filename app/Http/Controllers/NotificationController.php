@@ -11,8 +11,13 @@ class NotificationController extends Controller
      * Get notifications for a specific user.
      * Returns newest 50, includes unread_count.
      */
-    public function index($userId)
+    public function index(Request $request, $userId)
     {
+        $authUser = $request->user();
+        if ($authUser && !in_array($authUser->role, ['admin penelitian', 'admin fakultas']) && $authUser->id != $userId) {
+            return response()->json(['error' => 'Akses ditolak: Anda tidak dapat melihat notifikasi pengguna lain.'], 403);
+        }
+
         $user = \App\Models\User::find($userId);
 
         $notifications = Notification::where('user_id', $userId)
@@ -73,9 +78,14 @@ class NotificationController extends Controller
     /**
      * Mark a single notification as read.
      */
-    public function markRead($id)
+    public function markRead(Request $request, $id)
     {
         $notification = Notification::findOrFail($id);
+        $authUser = $request->user();
+        if ($authUser && !in_array($authUser->role, ['admin penelitian', 'admin fakultas']) && $authUser->id != $notification->user_id) {
+            return response()->json(['error' => 'Akses ditolak.'], 403);
+        }
+
         $notification->update(['is_read' => true]);
 
         return response()->json(['success' => true]);
@@ -84,8 +94,13 @@ class NotificationController extends Controller
     /**
      * Mark all notifications for a user as read.
      */
-    public function markAllRead($userId)
+    public function markAllRead(Request $request, $userId)
     {
+        $authUser = $request->user();
+        if ($authUser && !in_array($authUser->role, ['admin penelitian', 'admin fakultas']) && $authUser->id != $userId) {
+            return response()->json(['error' => 'Akses ditolak.'], 403);
+        }
+
         Notification::where('user_id', $userId)
             ->where('is_read', false)
             ->update(['is_read' => true]);
@@ -96,9 +111,14 @@ class NotificationController extends Controller
     /**
      * Delete a single notification.
      */
-    public function destroy($id)
+    public function destroy(Request $request, $id)
     {
         $notification = Notification::findOrFail($id);
+        $authUser = $request->user();
+        if ($authUser && !in_array($authUser->role, ['admin penelitian', 'admin fakultas']) && $authUser->id != $notification->user_id) {
+            return response()->json(['error' => 'Akses ditolak.'], 403);
+        }
+
         $notification->delete();
 
         return response()->json(['success' => true]);
@@ -107,8 +127,13 @@ class NotificationController extends Controller
     /**
      * Delete all read notifications for a user (cleanup).
      */
-    public function clearAll($userId)
+    public function clearAll(Request $request, $userId)
     {
+        $authUser = $request->user();
+        if ($authUser && !in_array($authUser->role, ['admin penelitian', 'admin fakultas']) && $authUser->id != $userId) {
+            return response()->json(['error' => 'Akses ditolak.'], 403);
+        }
+
         Notification::where('user_id', $userId)->delete();
 
         return response()->json(['success' => true]);

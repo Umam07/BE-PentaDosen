@@ -10,12 +10,19 @@ use App\Models\ScholarPublication;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Cache;
+use Illuminate\Support\Facades\Auth;
 
 class UserController extends Controller
 {
 
     public function login(Request $request)
     {
+        $request->validate([
+            'username' => 'nullable|string|max:255',
+            'email'    => 'nullable|string|max:255',
+            'password' => 'required|string',
+        ]);
+
         $username = $request->username ?? $request->email;
         $password = $request->password;
 
@@ -38,8 +45,17 @@ class UserController extends Controller
                 $user->save();
             }
 
+            Auth::login($user);
+            if ($request->hasSession()) {
+                $request->session()->regenerate();
+            }
+            $token = $user->createToken('auth-token')->plainTextToken;
+
             \App\Models\ActivityLog::log($user->id, 'Login', 'User berhasil login ke sistem via Database Local');
-            return response()->json(['user' => $user]);
+            return response()->json([
+                'user' => $user,
+                'token' => $token,
+            ]);
         }
 
         // 2. Try LDAP authentication if local authentication fails or user is not found locally
@@ -130,9 +146,18 @@ class UserController extends Controller
 
                                 $user->save();
 
+                                Auth::login($user);
+                                if ($request->hasSession()) {
+                                    $request->session()->regenerate();
+                                }
+                                $token = $user->createToken('auth-token')->plainTextToken;
+
                                 \App\Models\ActivityLog::log($user->id, 'Login', 'User berhasil login ke sistem via LDAP');
 
-                                return response()->json(['user' => $user]);
+                                return response()->json([
+                                    'user' => $user,
+                                    'token' => $token,
+                                ]);
                             }
                         }
                     }
@@ -145,10 +170,22 @@ class UserController extends Controller
 
     public function logout(Request $request)
     {
-        $userId = $request->user_id;
-        if ($userId) {
-            \App\Models\ActivityLog::log($userId, 'Logout', 'User keluar dari sistem');
+        $user = $request->user();
+        if ($user) {
+            if (method_exists($user, 'currentAccessToken') && $user->currentAccessToken()) {
+                $user->currentAccessToken()->delete();
+            }
+            \App\Models\ActivityLog::log($user->id, 'Logout', 'User keluar dari sistem');
+        } elseif ($request->filled('user_id')) {
+            \App\Models\ActivityLog::log($request->user_id, 'Logout', 'User keluar dari sistem');
         }
+
+        Auth::guard('web')->logout();
+        if ($request->hasSession()) {
+            $request->session()->invalidate();
+            $request->session()->regenerateToken();
+        }
+
         return response()->json(['success' => true]);
     }
 

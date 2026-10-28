@@ -20,6 +20,14 @@ class SintaController extends Controller
      */
     public function syncUser(Request $request, $id)
     {
+        $authUser = $request->user();
+        if (!$authUser) {
+            return response()->json(['error' => 'Unauthenticated.'], 401);
+        }
+        if (!in_array($authUser->role, ['admin penelitian', 'admin fakultas']) && $authUser->id != $id) {
+            return response()->json(['error' => 'Forbidden.'], 403);
+        }
+
         $user = User::findOrFail($id);
         $force = $request->boolean('force', false);
 
@@ -37,6 +45,11 @@ class SintaController extends Controller
      */
     public function syncAll(Request $request)
     {
+        $authUser = $request->user();
+        if (!$authUser || $authUser->role !== 'admin penelitian') {
+            return response()->json(['error' => 'Unauthorized. Admin penelitian privilege required.'], 403);
+        }
+
         $force = $request->boolean('force', false);
         $result = $this->sintaService->syncAllUsers($force);
 

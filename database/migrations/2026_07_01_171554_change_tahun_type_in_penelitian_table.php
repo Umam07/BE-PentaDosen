@@ -21,7 +21,11 @@ return new class extends Migration
         });
 
         // Migrate data
-        DB::statement("UPDATE penelitian SET tahun = STR_TO_DATE(CONCAT(tahun_old, '-01-01'), '%Y-%m-%d') WHERE tahun_old IS NOT NULL AND tahun_old > 0");
+        if (DB::getDriverName() === 'sqlite') {
+            DB::statement("UPDATE penelitian SET tahun = date(printf('%04d-01-01', CAST(tahun_old AS INTEGER))) WHERE tahun_old IS NOT NULL AND CAST(tahun_old AS INTEGER) > 0");
+        } else {
+            DB::statement("UPDATE penelitian SET tahun = STR_TO_DATE(CONCAT(tahun_old, '-01-01'), '%Y-%m-%d') WHERE tahun_old IS NOT NULL AND tahun_old > 0");
+        }
 
         Schema::table('penelitian', function (Blueprint $table) {
             $table->dropColumn('tahun_old');

@@ -18,8 +18,12 @@ class AdminController extends Controller
 {
     public function getPendingDocuments(Request $request)
     {
-        $role = $request->query('role');
-        $userId = $request->query('user_id');
+        $authUser = $request->user();
+        if (!$authUser || !in_array($authUser->role, ['admin penelitian', 'admin fakultas'])) {
+            return response()->json(['error' => 'Unauthorized. Admin access required.'], 403);
+        }
+        $role = $authUser->role;
+        $userId = $authUser->id;
 
         $query = Document::with('user');
 
@@ -91,8 +95,12 @@ class AdminController extends Controller
 
     public function getAllDocuments(Request $request)
     {
-        $role = $request->query('role');
-        $userId = $request->query('user_id');
+        $authUser = $request->user();
+        if (!$authUser || !in_array($authUser->role, ['admin penelitian', 'admin fakultas'])) {
+            return response()->json(['error' => 'Unauthorized. Admin access required.'], 403);
+        }
+        $role = $authUser->role;
+        $userId = $authUser->id;
         $cacheKey = "admin_all_documents_{$role}_{$userId}";
 
         $fetchData = function () use ($role, $userId) {
@@ -290,8 +298,12 @@ class AdminController extends Controller
 
     public function getAllLecturers(Request $request)
     {
-        $role = $request->query('role');
-        $userId = $request->query('user_id');
+        $authUser = $request->user();
+        if (!$authUser || !in_array($authUser->role, ['admin penelitian', 'admin fakultas'])) {
+            return response()->json(['error' => 'Unauthorized. Admin access required.'], 403);
+        }
+        $role = $authUser->role;
+        $userId = $authUser->id;
         $cacheKey = "admin_all_lecturers_{$role}_{$userId}";
 
         $fetchData = function () use ($role, $userId) {
@@ -415,9 +427,26 @@ class AdminController extends Controller
 
     public function verifyDocument(Request $request, $id)
     {
-        $status = $request->status; // 'Approved' or 'Rejected'
-        $role = $request->role; // 'admin penelitian' or 'admin fakultas'
+        $request->validate([
+            'status' => 'required|in:Approved,Rejected',
+            'catatan' => 'nullable|string|max:1000',
+        ]);
+
+        $authUser = $request->user();
+        if (!$authUser || !in_array($authUser->role, ['admin penelitian', 'admin fakultas'])) {
+            return response()->json(['success' => false, 'message' => 'Unauthorized. Only admins can verify documents.'], 403);
+        }
+
+        $role = $authUser->role;
+        $adminId = $authUser->id;
+        $status = $request->status;
         $doc = Document::findOrFail($id);
+
+        if ($role === 'admin fakultas') {
+            if ($doc->user && $doc->user->fakultas && $authUser->fakultas && $doc->user->fakultas !== $authUser->fakultas) {
+                return response()->json(['success' => false, 'message' => 'Akses ditolak: Anda hanya dapat memverifikasi dokumen dari fakultas Anda.'], 403);
+            }
+        }
 
         if ($status === 'Approved') {
             if ($role === 'admin fakultas') {
@@ -429,7 +458,7 @@ class AdminController extends Controller
 
                 \App\Models\DocumentHistory::create([
                     'document_id' => $doc->id,
-                    'user_id' => $request->admin_id ?? $doc->user_id,
+                    'user_id' => $adminId,
                     'action' => 'Diverifikasi Fakultas',
                     'notes' => null
                 ]);
@@ -443,7 +472,7 @@ class AdminController extends Controller
                     $sibling->update(['status' => 'Verified by Fakultas']);
                     \App\Models\DocumentHistory::create([
                         'document_id' => $sibling->id,
-                        'user_id' => $request->admin_id ?? $doc->user_id,
+                        'user_id' => $adminId,
                         'action' => 'Diverifikasi Fakultas',
                         'notes' => null
                     ]);
@@ -489,7 +518,7 @@ class AdminController extends Controller
                     
                     \App\Models\DocumentHistory::create([
                         'document_id' => $doc->id,
-                        'user_id' => $request->admin_id ?? $doc->user_id,
+                        'user_id' => $adminId,
                         'action' => 'Disetujui Admin Penelitian',
                         'notes' => null
                     ]);
@@ -522,7 +551,7 @@ class AdminController extends Controller
 
                         \App\Models\DocumentHistory::create([
                             'document_id' => $sibling->id,
-                            'user_id' => $request->admin_id ?? $doc->user_id,
+                            'user_id' => $adminId,
                             'action' => 'Disetujui Admin Penelitian',
                             'notes' => null
                         ]);
@@ -587,8 +616,8 @@ class AdminController extends Controller
             Cache::flush();
         }
 
-        if ($request->admin_id) {
-            \App\Models\ActivityLog::log($request->admin_id, 'Verifikasi Dokumen', "Mengubah status dokumen '{$doc->title}' menjadi {$status}");
+        if ($adminId) {
+            \App\Models\ActivityLog::log($adminId, 'Verifikasi Dokumen', "Mengubah status dokumen '{$doc->title}' menjadi {$status}");
         }
 
         // === NOTIFICATIONS ===
@@ -654,6 +683,11 @@ class AdminController extends Controller
 
     public function bulkUpdateScholar(Request $request)
     {
+        $authUser = $request->user();
+        if (!$authUser || $authUser->role !== 'admin penelitian') {
+            return response()->json(['error' => 'Unauthorized. Admin penelitian privilege required.'], 403);
+        }
+
         $lecturers = $request->lecturers; // Expecting array of {id, scholar_id}
 
         if (!is_array($lecturers)) {
@@ -681,6 +715,11 @@ class AdminController extends Controller
 
     public function bulkUpdateScopus(Request $request)
     {
+        $authUser = $request->user();
+        if (!$authUser || $authUser->role !== 'admin penelitian') {
+            return response()->json(['error' => 'Unauthorized. Admin penelitian privilege required.'], 403);
+        }
+
         $lecturers = $request->lecturers; // Expecting array of {id, scopus_id}
 
         if (!is_array($lecturers)) {

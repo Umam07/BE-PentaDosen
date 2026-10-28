@@ -34,8 +34,21 @@ class DocumentController extends Controller
 
     public function upload(Request $request)
     {
+        $authUser = $request->user();
+        if (!$authUser) {
+            return response()->json(['error' => 'Unauthenticated.'], 401);
+        }
+
+        // Authorization: non-admin can only upload for themselves and cannot self-approve
+        if (!in_array($authUser->role, ['admin penelitian', 'admin fakultas'])) {
+            $effectiveUserId = $authUser->id;
+            $requestedStatus = 'Pending';
+        } else {
+            $effectiveUserId = $request->filled('user_id') ? (int)$request->user_id : $authUser->id;
+            $requestedStatus = $request->status;
+        }
+
         $request->validate([
-            'user_id' => 'required',
             'title' => 'required',
             'category' => 'required',
             'published_at' => 'required|date',
@@ -57,7 +70,7 @@ class DocumentController extends Controller
         ]);
 
         // Duplicate check
-        $existingDuplicate = Document::where('user_id', $request->user_id)
+        $existingDuplicate = Document::where('user_id', $effectiveUserId)
             ->where('title', $request->title)
             ->first();
 
@@ -78,7 +91,6 @@ class DocumentController extends Controller
 
         $publishedAt = Carbon::parse($request->published_at);
         $docType = $request->doc_type;
-        $requestedStatus = $request->status; // Status sent by admin
 
         // Determine KPI status
         $isKpi = false;
@@ -133,12 +145,12 @@ class DocumentController extends Controller
             $titleNormalized = strtolower(trim($request->title));
 
             // Check Google Scholar publications
-            $scholarMatch = ScholarPublication::where('user_id', $request->user_id)
+            $scholarMatch = ScholarPublication::where('user_id', $effectiveUserId)
                 ->whereRaw('LOWER(TRIM(title)) = ?', [$titleNormalized])
                 ->exists();
 
             // Check Scopus publications
-            $scopusMatch = ScopusPublication::where('user_id', $request->user_id)
+            $scopusMatch = ScopusPublication::where('user_id', $effectiveUserId)
                 ->whereRaw('LOWER(TRIM(title)) = ?', [$titleNormalized])
                 ->exists();
 
@@ -165,7 +177,7 @@ class DocumentController extends Controller
 
                 if ($request->category === 'HKI Hak Cipta') {
                     $year = $publishedAt->year;
-                    $approvedCount = Document::where('user_id', $request->user_id)
+                    $approvedCount = Document::where('user_id', $effectiveUserId)
                         ->where('category', 'HKI Hak Cipta')
                         ->where('status', 'Approved')
                         ->whereYear('published_at', $year)
@@ -177,10 +189,10 @@ class DocumentController extends Controller
             }
         }
 
-        $doc = DB::transaction(function () use ($request, $fileUrl, $publishedAt, $isKpi, $accreditationPeriod, $autoVerified, $awardedPoints) {
+        $doc = DB::transaction(function () use ($request, $effectiveUserId, $fileUrl, $publishedAt, $isKpi, $accreditationPeriod, $autoVerified, $awardedPoints) {
 
             // Check for existing auto-synced document without file
-            $existingDoc = Document::where('user_id', $request->user_id)
+            $existingDoc = Document::where('user_id', $effectiveUserId)
                 ->where('title', $request->title)
                 ->where('file_url', '')
                 ->first();
@@ -215,7 +227,7 @@ class DocumentController extends Controller
                 $doc = $existingDoc;
             } else {
                 $doc = Document::create([
-                    'user_id' => $request->user_id,
+                    'user_id' => $effectiveUserId,
                     'title' => $request->title,
                     'category' => $request->category,
                     'file_url' => $fileUrl,
@@ -251,7 +263,7 @@ class DocumentController extends Controller
             // Log History
             DocumentHistory::create([
                 'document_id' => $doc->id,
-                'user_id' => $request->user_id,
+                'user_id' => $effectiveUserId,
                 'action' => $existingDoc ? 'Dokumen Diperbarui' : 'Dokumen Diunggah',
             ]);
 
@@ -270,12 +282,12 @@ class DocumentController extends Controller
             $actionName = 'Submit Book';
         }
 
-        \App\Models\ActivityLog::log($request->user_id, $actionName, 'User mengajukan ' . $request->category . ': ' . $request->title);
+        \App\Models\ActivityLog::log($effectiveUserId, $actionName, 'User mengajukan ' . $request->category . ': ' . $request->title);
 
         // === NOTIFICATIONS ===
         // Notify admin fakultas about new document submission
         if (!$autoVerified) {
-            $dosen = User::find($request->user_id);
+            $dosen = User::find($effectiveUserId);
             $dosenName = $dosen ? $dosen->name : 'Dosen';
             $dosenFakultas = $dosen ? $dosen->fakultas : null;
             $dosenProdi = $dosen ? $dosen->program_studi : null;
@@ -504,7 +516,16 @@ class DocumentController extends Controller
             'file' => 'required|file|mimes:pdf,jpg,jpeg,png|max:10240',
         ]);
 
+        $authUser = $request->user();
+        if (!$authUser) {
+            return response()->json(['error' => 'Unauthenticated.'], 401);
+        }
+
         $doc = Document::findOrFail($id);
+
+        if (!in_array($authUser->role, ['admin penelitian', 'admin fakultas']) && $doc->user_id !== $authUser->id) {
+            return response()->json(['success' => false, 'message' => 'Anda tidak memiliki hak untuk mengubah dokumen ini.'], 403);
+        }
 
         $path = $request->file('file')->store('uploads', 'public');
         $fileUrl = Storage::url($path);
@@ -533,7 +554,17 @@ class DocumentController extends Controller
             'penelitian_id' => 'nullable|exists:penelitian,id'
         ]);
 
+        $authUser = $request->user();
+        if (!$authUser) {
+            return response()->json(['error' => 'Unauthenticated.'], 401);
+        }
+
         $doc = Document::findOrFail($id);
+
+        if (!in_array($authUser->role, ['admin penelitian', 'admin fakultas']) && $doc->user_id !== $authUser->id) {
+            return response()->json(['success' => false, 'message' => 'Anda tidak memiliki hak untuk mengubah dokumen ini.'], 403);
+        }
+
         $doc->penelitian_id = $request->filled('penelitian_id') ? $request->penelitian_id : null;
         $doc->save();
 
@@ -567,7 +598,16 @@ class DocumentController extends Controller
 
     public function update(Request $request, $id)
     {
+        $authUser = $request->user();
+        if (!$authUser) {
+            return response()->json(['error' => 'Unauthenticated.'], 401);
+        }
+
         $doc = Document::findOrFail($id);
+
+        if (!in_array($authUser->role, ['admin penelitian', 'admin fakultas']) && $doc->user_id !== $authUser->id) {
+            return response()->json(['success' => false, 'message' => 'Anda tidak memiliki hak untuk mengubah dokumen ini.'], 403);
+        }
 
         // Lock: cannot edit if already verified or approved
         if (in_array($doc->status, ['Verified by Fakultas', 'Approved'])) {
@@ -723,11 +763,21 @@ class DocumentController extends Controller
         ]);
     }
 
-    public function destroy($id)
+    public function destroy(Request $request, $id)
     {
+        $authUser = $request->user();
+        if (!$authUser) {
+            return response()->json(['error' => 'Unauthenticated.'], 401);
+        }
+
         if (str_starts_with($id, 'scopus_')) {
             $realId = str_replace('scopus_', '', $id);
             $pub = \App\Models\ScopusPublication::findOrFail($realId);
+
+            if (!in_array($authUser->role, ['admin penelitian', 'admin fakultas']) && $pub->user_id !== $authUser->id) {
+                return response()->json(['success' => false, 'message' => 'Anda tidak memiliki hak untuk menghapus publikasi ini.'], 403);
+            }
+
             $userId = $pub->user_id;
             $docTitle = $pub->title;
             $pub->delete();
@@ -755,6 +805,11 @@ class DocumentController extends Controller
         if (str_starts_with($id, 'scholar_')) {
             $realId = str_replace('scholar_', '', $id);
             $pub = \App\Models\ScholarPublication::findOrFail($realId);
+
+            if (!in_array($authUser->role, ['admin penelitian', 'admin fakultas']) && $pub->user_id !== $authUser->id) {
+                return response()->json(['success' => false, 'message' => 'Anda tidak memiliki hak untuk menghapus publikasi ini.'], 403);
+            }
+
             $userId = $pub->user_id;
             $docTitle = $pub->title;
             $pub->delete();
@@ -782,6 +837,11 @@ class DocumentController extends Controller
         if (str_starts_with($id, 'openalex_')) {
             $realId = str_replace('openalex_', '', $id);
             $pub = \App\Models\OpenalexPublication::findOrFail($realId);
+
+            if (!in_array($authUser->role, ['admin penelitian', 'admin fakultas']) && $pub->user_id !== $authUser->id) {
+                return response()->json(['success' => false, 'message' => 'Anda tidak memiliki hak untuk menghapus publikasi ini.'], 403);
+            }
+
             $userId = $pub->user_id;
             $docTitle = $pub->title;
             $pub->delete();
@@ -807,6 +867,10 @@ class DocumentController extends Controller
         }
 
         $doc = Document::findOrFail($id);
+
+        if (!in_array($authUser->role, ['admin penelitian', 'admin fakultas']) && $doc->user_id !== $authUser->id) {
+            return response()->json(['success' => false, 'message' => 'Anda tidak memiliki hak untuk menghapus dokumen ini.'], 403);
+        }
 
         // Lock: cannot delete if already verified or approved
         if (in_array($doc->status, ['Verified by Fakultas', 'Approved'])) {
@@ -881,7 +945,17 @@ class DocumentController extends Controller
             'is_corresponding' => 'required|boolean'
         ]);
 
+        $authUser = $request->user();
+        if (!$authUser) {
+            return response()->json(['error' => 'Unauthenticated.'], 401);
+        }
+
         $doc = Document::findOrFail($id);
+
+        if (!in_array($authUser->role, ['admin penelitian', 'admin fakultas']) && $doc->user_id !== $authUser->id) {
+            return response()->json(['success' => false, 'message' => 'Forbidden.'], 403);
+        }
+
         $user = $doc->user;
 
         \Illuminate\Support\Facades\DB::transaction(function () use ($doc, $user, $request) {
@@ -913,8 +987,18 @@ class DocumentController extends Controller
             'is_corresponding' => 'required|boolean'
         ]);
 
+        $authUser = $request->user();
+        if (!$authUser) {
+            return response()->json(['error' => 'Unauthenticated.'], 401);
+        }
+
         $cleanId = (int)str_replace('scholar_', '', $id);
         $pub = \App\Models\ScholarPublication::findOrFail($cleanId);
+
+        if (!in_array($authUser->role, ['admin penelitian', 'admin fakultas']) && $pub->user_id !== $authUser->id) {
+            return response()->json(['success' => false, 'message' => 'Forbidden.'], 403);
+        }
+
         $user = $pub->user;
 
         \Illuminate\Support\Facades\DB::transaction(function () use ($pub, $user, $request) {
@@ -941,19 +1025,25 @@ class DocumentController extends Controller
 
     public function bulkCorrespondence(Request $request)
     {
+        $authUser = $request->user();
+        if (!$authUser) {
+            return response()->json(['error' => 'Unauthenticated.'], 401);
+        }
+
         $selections = $request->input('selections', []);
         if (empty($selections) || !is_array($selections)) {
             return response()->json(['success' => false, 'message' => 'No selections provided'], 400);
         }
 
         $userIdsToRecalculate = [];
+        $isAdmin = in_array($authUser->role, ['admin penelitian', 'admin fakultas']);
 
-        \Illuminate\Support\Facades\DB::transaction(function () use ($selections, &$userIdsToRecalculate) {
+        \Illuminate\Support\Facades\DB::transaction(function () use ($selections, &$userIdsToRecalculate, $authUser, $isAdmin) {
             foreach ($selections as $idStr => $val) {
                 if (str_starts_with((string)$idStr, 'scopus_')) {
                     $rawId = (int)str_replace('scopus_', '', $idStr);
                     $pub = ScopusPublication::find($rawId);
-                    if ($pub) {
+                    if ($pub && ($isAdmin || $pub->user_id === $authUser->id)) {
                         $pub->is_corresponding = (bool)$val;
                         $pub->is_corresponding_confirmed = true;
                         $pub->awarded_points = round($pub->calculatePoints());
@@ -963,7 +1053,7 @@ class DocumentController extends Controller
                 } elseif (str_starts_with((string)$idStr, 'scholar_')) {
                     $rawId = (int)str_replace('scholar_', '', $idStr);
                     $pub = ScholarPublication::find($rawId);
-                    if ($pub) {
+                    if ($pub && ($isAdmin || $pub->user_id === $authUser->id)) {
                         if (is_bool($val)) {
                             $pub->is_corresponding = (bool)$val;
                             $pub->is_corresponding_confirmed = true;
@@ -974,7 +1064,7 @@ class DocumentController extends Controller
                 } else {
                     $rawId = (int)$idStr;
                     $doc = Document::find($rawId);
-                    if ($doc) {
+                    if ($doc && ($isAdmin || $doc->user_id === $authUser->id)) {
                         if (is_string($val)) {
                             $doc->sinta_rank = $val;
                             $doc->is_sinta_confirmed = true;

@@ -17,6 +17,14 @@ class ScopusController extends Controller
 {
     public function sync(Request $request, $id)
     {
+        $authUser = $request->user();
+        if (!$authUser) {
+            return response()->json(['error' => 'Unauthenticated.'], 401);
+        }
+        if (!in_array($authUser->role, ['admin penelitian', 'admin fakultas']) && $authUser->id != $id) {
+            return response()->json(['error' => 'Forbidden.'], 403);
+        }
+
         $user = User::findOrFail($id);
 
         if (!$user->scopus_id) {
@@ -321,6 +329,14 @@ class ScopusController extends Controller
 
     public function updateScopusId(Request $request, $id)
     {
+        $authUser = $request->user();
+        if (!$authUser) {
+            return response()->json(['error' => 'Unauthenticated.'], 401);
+        }
+        if (!in_array($authUser->role, ['admin penelitian', 'admin fakultas']) && $authUser->id != $id) {
+            return response()->json(['error' => 'Forbidden.'], 403);
+        }
+
         $request->validate([
             'scopus_id' => 'nullable|numeric'
         ]);
@@ -595,11 +611,21 @@ class ScopusController extends Controller
 
     public function updateQuartile(Request $request, $id)
     {
+        $authUser = $request->user();
+        if (!$authUser) {
+            return response()->json(['error' => 'Unauthenticated.'], 401);
+        }
+
         $request->validate([
             'quartile' => 'nullable|string|in:Q1,Q2,Q3,Q4,None'
         ]);
 
         $pub = \App\Models\ScopusPublication::findOrFail($id);
+
+        if (!in_array($authUser->role, ['admin penelitian', 'admin fakultas']) && $pub->user_id !== $authUser->id) {
+            return response()->json(['error' => 'Forbidden.'], 403);
+        }
+
         $user = $pub->user;
         $newQuartile = $request->quartile === 'None' ? null : $request->quartile;
 
@@ -626,12 +652,22 @@ class ScopusController extends Controller
 
     public function updateCorresponding(Request $request, $id)
     {
+        $authUser = $request->user();
+        if (!$authUser) {
+            return response()->json(['error' => 'Unauthenticated.'], 401);
+        }
+
         $request->validate([
             'is_corresponding' => 'required|boolean'
         ]);
 
         $cleanId = (int)str_replace('scopus_', '', $id);
         $pub = \App\Models\ScopusPublication::findOrFail($cleanId);
+
+        if (!in_array($authUser->role, ['admin penelitian', 'admin fakultas']) && $pub->user_id !== $authUser->id) {
+            return response()->json(['error' => 'Forbidden.'], 403);
+        }
+
         $user = $pub->user;
 
         DB::transaction(function () use ($pub, $user, $request) {

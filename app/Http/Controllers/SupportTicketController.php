@@ -53,8 +53,11 @@ class SupportTicketController extends Controller
      */
     public function store(Request $request)
     {
+        $authUser = $request->user();
+        $targetUserId = $authUser ? $authUser->id : $request->user_id;
+
         $request->validate([
-            'user_id' => 'required|exists:users,id',
+            'user_id' => $authUser ? 'nullable|exists:users,id' : 'required|exists:users,id',
             'subject' => 'nullable|string|max:255',
             'message' => 'required|string',
             'image'   => 'nullable|file|image|mimes:jpeg,jpg,png,webp,gif|max:10240',
@@ -71,11 +74,11 @@ class SupportTicketController extends Controller
             $imageUrl = \Illuminate\Support\Facades\Storage::url($path);
         }
 
-        $user = User::find($request->user_id);
+        $user = $authUser ?: User::find($targetUserId);
         $initialMsg = [
             'id'          => 'msg_' . time() . '_1',
             'sender'      => 'user',
-            'sender_id'   => (int) $request->user_id,
+            'sender_id'   => (int) $targetUserId,
             'sender_name' => $user->name ?? 'Dosen',
             'sender_role' => $user->role ?? 'dosen',
             'message'     => $request->message,
@@ -84,7 +87,7 @@ class SupportTicketController extends Controller
         ];
 
         $ticket = SupportTicket::create([
-            'user_id'   => $request->user_id,
+            'user_id'   => $targetUserId,
             'subject'   => $request->subject,
             'message'   => $request->message,
             'image_url' => $imageUrl,
@@ -93,7 +96,7 @@ class SupportTicketController extends Controller
         ]);
 
         \App\Models\ActivityLog::log(
-            $request->user_id,
+            $targetUserId,
             'Kirim Pesan Support',
             'Dosen mengirim pesan bantuan ke admin: ' . ($request->subject ?: 'Tanpa Subjek') . ($imageUrl ? ' (dengan lampiran gambar)' : '')
         );
@@ -110,7 +113,17 @@ class SupportTicketController extends Controller
      */
     public function index(Request $request)
     {
+        $authUser = $request->user();
         $userId = $request->query('user_id');
+
+        if ($authUser) {
+            if (!in_array($authUser->role, ['admin penelitian', 'admin fakultas'])) {
+                // Regular dosen can ONLY see their own tickets
+                $userId = $authUser->id;
+            } else {
+                $userId = $userId ?: $authUser->id;
+            }
+        }
 
         if (!$userId) {
             return response()->json([
@@ -148,15 +161,25 @@ class SupportTicketController extends Controller
             ], 404);
         }
 
-        // Authorization check: pastikan tiket milik user yang meminta atau diakses oleh admin
-        $requestUserId = $request->query('user_id');
-        $userRole = $request->query('role');
-
-        if ($requestUserId && $ticket->user_id != $requestUserId && !in_array($userRole, ['admin penelitian', 'admin fakultas'])) {
-            return response()->json([
-                'success' => false,
-                'message' => 'Anda tidak memiliki akses ke pesan ini.',
-            ], 403);
+        // Authorization check
+        $authUser = $request->user();
+        if ($authUser) {
+            $isAdmin = in_array($authUser->role, ['admin penelitian', 'admin fakultas']);
+            if (!$isAdmin && $ticket->user_id != $authUser->id) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Anda tidak memiliki akses ke pesan ini.',
+                ], 403);
+            }
+        } else {
+            $requestUserId = $request->query('user_id');
+            $userRole = $request->query('role');
+            if ($requestUserId && $ticket->user_id != $requestUserId && !in_array($userRole, ['admin penelitian', 'admin fakultas'])) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Anda tidak memiliki akses ke pesan ini.',
+                ], 403);
+            }
         }
 
         $this->ensureMessagesArray($ticket);
@@ -172,8 +195,9 @@ class SupportTicketController extends Controller
      */
     public function adminIndex(Request $request)
     {
-        $role = $request->query('role');
-        if ($role && !in_array($role, ['admin penelitian', 'admin fakultas'])) {
+        $authUser = $request->user();
+        $role = $authUser ? $authUser->role : $request->query('role');
+        if (!in_array($role, ['admin penelitian', 'admin fakultas'])) {
             return response()->json(['success' => false, 'message' => 'Akses ditolak: khusus admin.'], 403);
         }
 
@@ -181,6 +205,12 @@ class SupportTicketController extends Controller
             'user:id,name,email,fakultas,program_studi',
             'repliedByAdmin:id,name,role'
         ]);
+
+        if ($authUser && $authUser->role === 'admin fakultas' && $authUser->fakultas) {
+            $query->whereHas('user', function ($u) use ($authUser) {
+                $u->where('fakultas', $authUser->fakultas);
+            });
+        }
 
         // Filter berdasarkan status (menunggu/dibalas/selesai)
         $status = $request->query('status');
@@ -241,8 +271,9 @@ class SupportTicketController extends Controller
      */
     public function adminShow(Request $request, $id)
     {
-        $role = $request->query('role');
-        if ($role && !in_array($role, ['admin penelitian', 'admin fakultas'])) {
+        $authUser = $request->user();
+        $role = $authUser ? $authUser->role : $request->query('role');
+        if (!in_array($role, ['admin penelitian', 'admin fakultas'])) {
             return response()->json(['success' => false, 'message' => 'Akses ditolak: khusus admin.'], 403);
         }
 
@@ -258,6 +289,12 @@ class SupportTicketController extends Controller
             ], 404);
         }
 
+        if ($authUser && $authUser->role === 'admin fakultas' && $authUser->fakultas) {
+            if ($ticket->user && $ticket->user->fakultas !== $authUser->fakultas) {
+                return response()->json(['success' => false, 'message' => 'Akses ditolak: tiket bukan dari fakultas Anda.'], 403);
+            }
+        }
+
         $this->ensureMessagesArray($ticket);
 
         return response()->json([
@@ -271,9 +308,11 @@ class SupportTicketController extends Controller
      */
     public function addMessage(Request $request, $id)
     {
+        $authUser = $request->user();
+
         $request->validate([
-            'sender_id' => 'required|exists:users,id',
-            'sender'    => 'required|in:user,admin',
+            'sender_id' => $authUser ? 'nullable|exists:users,id' : 'required|exists:users,id',
+            'sender'    => 'nullable|in:user,admin',
             'message'   => 'required|string',
             'image'     => 'nullable|file|image|mimes:jpeg,jpg,png,webp,gif|max:10240',
         ], [
@@ -286,20 +325,33 @@ class SupportTicketController extends Controller
         $this->ensureMessagesArray($ticket);
         $messages = $ticket->messages ?: [];
 
+        if ($authUser) {
+            $isAdmin = in_array($authUser->role, ['admin penelitian', 'admin fakultas']);
+            if (!$isAdmin && $ticket->user_id != $authUser->id) {
+                return response()->json(['success' => false, 'message' => 'Anda tidak memiliki akses ke percakapan ini.'], 403);
+            }
+            $sender = $isAdmin ? 'admin' : 'user';
+            $senderId = (int) $authUser->id;
+            $senderUser = $authUser;
+            $senderRole = $isAdmin ? $authUser->role : 'dosen';
+        } else {
+            $sender = $request->sender ?: 'user';
+            $senderId = (int) $request->sender_id;
+            $senderUser = User::find($senderId);
+            $senderRole = $sender === 'admin' ? ($senderUser->role ?? 'admin penelitian') : 'dosen';
+        }
+
         $imageUrl = null;
         if ($request->hasFile('image')) {
             $path = $request->file('image')->store('support_tickets', 'public');
             $imageUrl = \Illuminate\Support\Facades\Storage::url($path);
         }
 
-        $senderUser = User::find($request->sender_id);
-        $senderRole = $request->sender === 'admin' ? ($senderUser->role ?? 'admin penelitian') : 'dosen';
-
         $newMessage = [
             'id'          => 'msg_' . time() . '_' . (count($messages) + 1),
-            'sender'      => $request->sender,
-            'sender_id'   => (int) $request->sender_id,
-            'sender_name' => $senderUser->name ?? ($request->sender === 'admin' ? 'Tim Admin' : 'Dosen'),
+            'sender'      => $sender,
+            'sender_id'   => $senderId,
+            'sender_name' => $senderUser->name ?? ($sender === 'admin' ? 'Tim Admin' : 'Dosen'),
             'sender_role' => $senderRole,
             'message'     => trim($request->message),
             'image_url'   => $imageUrl,
@@ -307,16 +359,16 @@ class SupportTicketController extends Controller
         ];
 
         $messages[] = $newMessage;
-        $newStatus = $request->sender === 'admin' ? ($request->status ?: 'dibalas') : 'menunggu';
+        $newStatus = $sender === 'admin' ? ($request->status ?: 'dibalas') : 'menunggu';
 
         $updateData = [
             'messages' => $messages,
             'status'   => $newStatus,
         ];
 
-        if ($request->sender === 'admin') {
+        if ($sender === 'admin') {
             $updateData['admin_reply'] = trim($request->message);
-            $updateData['replied_by']  = $request->sender_id;
+            $updateData['replied_by']  = $senderId;
             $updateData['replied_at']  = now();
 
             // Notifikasi ke Dosen
@@ -330,7 +382,7 @@ class SupportTicketController extends Controller
         } else {
             // Notifikasi ke Admin / log activity untuk balasan Dosen
             \App\Models\ActivityLog::log(
-                $request->sender_id,
+                $senderId,
                 'Kirim Balasan Support',
                 'Dosen mengirim pesan susulan pada tiket #' . $ticket->id
             );
@@ -352,9 +404,16 @@ class SupportTicketController extends Controller
      */
     public function reply(Request $request, $id)
     {
+        $authUser = $request->user();
+        if ($authUser && !in_array($authUser->role, ['admin penelitian', 'admin fakultas'])) {
+            return response()->json(['success' => false, 'message' => 'Akses ditolak: khusus admin.'], 403);
+        }
+
+        $adminId = $authUser ? $authUser->id : $request->admin_id;
+
         $request->merge([
             'sender'    => 'admin',
-            'sender_id' => $request->admin_id,
+            'sender_id' => $adminId,
             'message'   => $request->admin_reply,
         ]);
 
@@ -366,6 +425,11 @@ class SupportTicketController extends Controller
      */
     public function updateStatus(Request $request, $id)
     {
+        $authUser = $request->user();
+        if ($authUser && !in_array($authUser->role, ['admin penelitian', 'admin fakultas'])) {
+            return response()->json(['success' => false, 'message' => 'Akses ditolak: khusus admin.'], 403);
+        }
+
         $request->validate([
             'status' => 'required|in:menunggu,dibalas,selesai',
         ], [
@@ -377,9 +441,11 @@ class SupportTicketController extends Controller
         $ticket->status = $request->status;
         $ticket->save();
 
-        if ($request->admin_id) {
+        $adminId = $authUser ? $authUser->id : $request->admin_id;
+
+        if ($adminId) {
             \App\Models\ActivityLog::log(
-                $request->admin_id,
+                $adminId,
                 'Update Status Tiket',
                 "Mengubah status tiket ID {$ticket->id} menjadi {$request->status}"
             );

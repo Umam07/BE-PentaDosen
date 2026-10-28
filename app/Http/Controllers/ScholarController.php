@@ -26,6 +26,14 @@ class ScholarController extends Controller
 
     public function sync(Request $request, $id)
     {
+        $authUser = $request->user();
+        if (!$authUser) {
+            return response()->json(['error' => 'Unauthenticated.'], 401);
+        }
+        if (!in_array($authUser->role, ['admin penelitian', 'admin fakultas']) && $authUser->id != $id) {
+            return response()->json(['error' => 'Forbidden.'], 403);
+        }
+
         $user = User::findOrFail($id);
         $scholarId = $this->cleanScholarId($user->scholar_id);
 
@@ -132,6 +140,14 @@ class ScholarController extends Controller
 
     public function updateScholarId(Request $request, $id)
     {
+        $authUser = $request->user();
+        if (!$authUser) {
+            return response()->json(['error' => 'Unauthenticated.'], 401);
+        }
+        if (!in_array($authUser->role, ['admin penelitian', 'admin fakultas']) && $authUser->id != $id) {
+            return response()->json(['error' => 'Forbidden.'], 403);
+        }
+
         $rawScholarId = $request->scholar_id;
         $cleanId = $this->cleanScholarId($rawScholarId);
         $request->merge(['scholar_id' => $cleanId]);
